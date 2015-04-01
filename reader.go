@@ -47,7 +47,7 @@ func (lr *limitedReader) Read(p []byte) (written int, err error) {
 		return
 	}
 
-	for written <= len(p) {
+	for written < len(p) {
 		if lr.remaining == 0 {
 			select {
 			case lr.remaining = <-lr.c:

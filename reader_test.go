@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 )
@@ -43,7 +44,76 @@ func TestLimitedReader(t *testing.T) {
 	if !bytes.Equal(p[:nBytes], []byte(testText)[:nBytes]) {
 		t.Errorf("Bytes not properly read: %s", p[:nBytes])
 	}
+
+	go func() {
+		tl.c <- ByteCount(nBytes / 2)
+		tl.c <- ByteCount(nBytes / 2)
+	}()
+
+	n2, err2 := lr.Read(p)
+
+	if err2 != nil {
+		t.Errorf("Error returned during second read attempt")
+	}
+
+	if n2 != nBytes {
+		t.Errorf("Wrong number of bytes read second time: %d should be %d", n2, nBytes)
+	}
+
+	if !bytes.Equal(p[:nBytes], []byte(testText)[nBytes:nBytes*2]) {
+		t.Errorf("Wrong bytes returned: %s", string(p[:nBytes]))
+	}
+
+	p2 := make([]byte, nBytes)
+
+	go func() {
+		tl.c <- MB
+	}()
+
+	n3, err3 := lr.Read(p2)
+
+	if err3 != nil {
+		t.Errorf("Error during short read")
+	}
+
+	if n3 != nBytes {
+		t.Errorf("Reader reported more bytes written than length of byte slice: %d, should be %d", n3, len(p2))
+	}
 }
+
+func TestEOF(t *testing.T) {
+	r := strings.NewReader(testEofText)
+	l := &testLimiter{
+		c: make(chan ByteCount),
+	}
+	lr := NewReader(r, l)
+	go func() {
+		l.c <- MB
+	}()
+
+	p := make([]byte, 20)
+	n, err := lr.Read(p)
+
+	if err != io.EOF {
+		t.Errorf("Read did not properly return EOF")
+	}
+
+	if n != len(testEofText) {
+		t.Errorf("Wrong number of bytes read: %d, should be %d", n, len(testEofText))
+	}
+
+	n2, err2 := lr.Read(p)
+
+	if err2 != io.EOF {
+		t.Error("Second read did not return EOF")
+	}
+
+	if n2 > 0 {
+		t.Errorf("Bytes were READ after EOF: %d", n2)
+	}
+}
+
+const testEofText = "foobarbaz"
 
 const testText = `Lorem ipsum dolor sit amet, consectetur adipiscing elit.
 Etiam eget aliquet ipsum, vitae sodales arcu. Vivamus congue id metus eu
