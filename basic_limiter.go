@@ -19,14 +19,14 @@ func (bl basicLimiter) GetLimit() <-chan ByteCount {
 	return bl.cbc
 }
 
-const TIME_UNIT = 50 * time.Millisecond
+const timeSlice = 20 * time.Millisecond
 
 //BasicLimiter will divvy up the bytes into 100 smaller parts to spread the load
 //across time
 func BasicLimiter(b ByteCount, t time.Duration) Limiter {
 	bl := &basicLimiter{
-		t:   time.NewTicker(TIME_UNIT),
-		bc:  b / ByteCount(t/TIME_UNIT),
+		t:   time.NewTicker(timeSlice),
+		bc:  b / ByteCount(t/timeSlice),
 		cbc: make(chan ByteCount),
 	}
 	go bl.Start()
