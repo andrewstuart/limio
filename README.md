@@ -1,5 +1,7 @@
 # ratelimit
 --
+### Docs available at [godoc.org](https://godoc.org/github.com/andrewstuart/ratelimit)
+
     import "git.astuart.co/andrew/ratelimit"
 
 Package ratelimit provides an interface abstraction for rate limiting or flow
