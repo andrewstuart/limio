@@ -2,7 +2,6 @@ package ratelimit
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 )
 
@@ -77,7 +76,6 @@ func (lr *limitedReader) Read(p []byte) (written int, err error) {
 		}
 
 	}
-	fmt.Println(written)
 
 	return
 }
