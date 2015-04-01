@@ -9,6 +9,4 @@ const (
 	TB
 	PB
 	EB
-	ZB
-	YB
 )
