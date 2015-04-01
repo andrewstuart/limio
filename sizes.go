@@ -1,7 +1,7 @@
 package ratelimit
 
 const (
-	B int64 = 1 << (10 * (iota))
+	B ByteCount = 1 << (10 * (iota))
 	KB
 	MB
 	GB
