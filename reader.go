@@ -8,14 +8,21 @@ import (
 
 type ByteCount int64
 
+//A Limiter should implement some strategy for providing access to a shared io resource.
+//The GetLimit() function must return a channel of ByteCount. When it is appropriate for
+//the new limited io.Reader to read some amount of data, that amount should be sent
+//through the channel, at which point the io.Reader will "burstily" read until it has
+//exhausted the number of bytes it was told to read.
+//
+//Caution is recommended when implementing a Limiter if this bursty behavior is
+//undesireable. If undesireable, make sure that any large ByteCounts are broken up
+//into smaller values sent at shorter intervals.
 type Limiter interface {
 	GetLimit() <-chan ByteCount
 }
 
-type ChunkLimiter interface {
-	Limiter
-}
-
+//NewReader takes an io.Reader and a Limiter and returns an io.Reader that will
+//be limited via the strategy that Limiter choses to implement.
 func NewReader(r io.Reader, l Limiter) io.Reader {
 	return &limitedReader{
 		br: bufio.NewReader(r),
