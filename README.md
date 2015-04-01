@@ -1,3 +1,3 @@
 # ratelimit
 
-[Docs available on godoc](https://godoc.org/github/andrewstuart/ratelimit)
+[Docs available on godoc](https://godoc.org/github.com/andrewstuart/ratelimit)
