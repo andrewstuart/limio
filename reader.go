@@ -6,7 +6,9 @@ import (
 	"io"
 )
 
-type ByteCount int64
+//A ByteCount is simply an abstraction over some integer type to provide more flexibility
+//should the type need to be changed.
+type ByteCount uint64
 
 //A Limiter should implement some strategy for providing access to a shared io resource.
 //The GetLimit() function must return a channel of ByteCount. When it is appropriate for
