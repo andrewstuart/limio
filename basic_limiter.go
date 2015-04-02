@@ -1,30 +1,32 @@
-package ratelimit
+package limio
 
 import "time"
 
 type basicLimiter struct {
-	t   *time.Ticker
-	bc  ByteCount
-	cbc []chan ByteCount
+	t    *time.Ticker
+	bc   ByteCount
+	bccs []chan ByteCount
 }
 
 func (bl *basicLimiter) Start() {
 	for {
 		<-bl.t.C
 
-		perChan := bl.bc / ByteCount(len(bl.cbc))
+		if len(bl.bccs) > 0 {
+			perChan := bl.bc / ByteCount(len(bl.bccs))
 
-		for i := range bl.cbc {
-			go func(i int) {
-				bl.cbc[i] <- perChan
-			}(i)
+			for i := range bl.bccs {
+				go func(i int) {
+					bl.bccs[i] <- perChan
+				}(i)
+			}
 		}
 	}
 }
 
 func (bl *basicLimiter) GetLimit() <-chan ByteCount {
 	ch := make(chan ByteCount)
-	bl.cbc = append(bl.cbc, ch)
+	bl.bccs = append(bl.bccs, ch)
 	return ch
 }
 
@@ -36,9 +38,9 @@ const timeSlice = 20 * time.Millisecond
 //rate.
 func NewBasicLimiter(b ByteCount, t time.Duration) Limiter {
 	bl := &basicLimiter{
-		t:   time.NewTicker(timeSlice),
-		bc:  b / ByteCount(t/timeSlice),
-		cbc: make([]chan ByteCount, 0, 1),
+		t:    time.NewTicker(timeSlice),
+		bc:   b / ByteCount(t/timeSlice),
+		bccs: make([]chan ByteCount, 0, 1),
 	}
 	go bl.Start()
 	return bl

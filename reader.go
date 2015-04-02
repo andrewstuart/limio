@@ -1,4 +1,4 @@
-package ratelimit
+package limio
 
 import (
 	"bufio"
@@ -47,6 +47,7 @@ func (lr *limitedReader) Read(p []byte) (written int, err error) {
 		return
 	}
 
+	var b byte
 	for written < len(p) {
 		if lr.remaining == 0 {
 			select {
@@ -61,21 +62,16 @@ func (lr *limitedReader) Read(p []byte) (written int, err error) {
 			}
 		}
 
-		var b byte
-		for i := 0; i < int(lr.remaining) && i < len(p); i++ {
-			b, err = lr.br.ReadByte()
+		b, err = lr.br.ReadByte()
 
-			if err == io.EOF {
-				lr.eof = true
-				return
-			}
-
-			p[written] = b
-			written++
-			lr.remaining--
+		if err == io.EOF {
+			lr.eof = true
+			return
 		}
 
+		p[written] = b
+		written++
+		lr.remaining--
 	}
-
 	return
 }

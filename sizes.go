@@ -1,4 +1,4 @@
-package ratelimit
+package limio
 
 //Some useful constants with the proper typing
 const (

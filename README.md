@@ -1,4 +1,4 @@
-[![GoDoc](https://godoc.org/github.com/andrewstuart/ratelimit?status.svg)](https://godoc.org/github.com/andrewstuart/ratelimit)
+[![GoDoc](https://godoc.org/github.com/andrewstuart/limio?status.svg)](https://godoc.org/github.com/andrewstuart/limio)
 
 # ratelimit
 --
