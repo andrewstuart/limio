@@ -22,26 +22,25 @@ type ByteCount uint64
 //up into smaller values sent at shorter intervals. See BasicReader for a good
 //example of how this can be achieved.
 type Limiter interface {
-	GetLimit() <-chan ByteCount
+	Limit(<-chan ByteCount)
 }
 
 //NewReader takes an io.Reader and a Limiter and returns an io.Reader that will
 //be limited via the strategy that Limiter choses to implement.
-func NewReader(r io.Reader, l Limiter) io.Reader {
-	return &limitedReader{
+func NewReader(r io.Reader, l Limiter) *Reader {
+	return &Reader{
 		br: bufio.NewReader(r),
-		c:  l.GetLimit(),
 	}
 }
 
-type limitedReader struct {
+type Reader struct {
 	br        *bufio.Reader
 	c         <-chan ByteCount
 	eof       bool
 	remaining ByteCount
 }
 
-func (lr *limitedReader) Read(p []byte) (written int, err error) {
+func (lr *Reader) Read(p []byte) (written int, err error) {
 	if lr.eof {
 		err = io.EOF
 		return

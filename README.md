@@ -1,10 +1,10 @@
 [![GoDoc](https://godoc.org/github.com/andrewstuart/limio?status.svg)](https://godoc.org/github.com/andrewstuart/limio)
 
-# ratelimit
+# limio
 --
-    import "git.astuart.co/andrew/ratelimit"
+    import "git.astuart.co/andrew/limio"
 
-Package ratelimit provides an interface abstraction for rate limiting or flow
+Package limio provides an interface abstraction for rate limiting or flow
 control of arbitrary io.Readers or io.Writers. Several concrete implementations
 of Limiters are also provided.
 

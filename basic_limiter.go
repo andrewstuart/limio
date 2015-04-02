@@ -1,6 +1,9 @@
 package limio
 
-import "time"
+import (
+	"io"
+	"time"
+)
 
 type basicLimiter struct {
 	t    *time.Ticker
@@ -24,7 +27,7 @@ func (bl *basicLimiter) Start() {
 	}
 }
 
-func (bl *basicLimiter) GetLimit() <-chan ByteCount {
+func (bl *basicLimiter) GetLimit(_ io.Reader) <-chan ByteCount {
 	ch := make(chan ByteCount)
 	bl.bccs = append(bl.bccs, ch)
 	return ch
@@ -36,7 +39,7 @@ const timeSlice = 20 * time.Millisecond
 //windows. If used to create multiple LimitedReaders (or if GetLimit called
 //multiple times), it will divvy up the rate across all the readers, at the same
 //rate.
-func NewBasicLimiter(b ByteCount, t time.Duration) Limiter {
+func NewBasicLimiter(r io.Reader, b ByteCount, t time.Duration) Reader {
 	bl := &basicLimiter{
 		t:    time.NewTicker(timeSlice),
 		bc:   b / ByteCount(t/timeSlice),
