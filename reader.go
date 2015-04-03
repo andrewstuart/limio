@@ -33,6 +33,9 @@ type LimitWaiter interface {
 	Wait()
 }
 
+//Reader is the main implentation of interest for probably most people. It
+//takes an io.Reader and returns Reader object which implements, among others,
+//the io.Reader and Limiter interfaces
 type Reader struct {
 	r      io.Reader
 	buf    []byte
@@ -152,13 +155,19 @@ func (r *Reader) Limit(n uint64, t time.Duration) {
 	}()
 }
 
+//LimitChan exposes the ability to manage the underlying reader with more
+//precision and flexibiity. Each uint64 sent on the channel provided is treated
+//as a number of bytes to burstily/greedily allow to be Read. It is recommended
+//that most implementations take caution to avoid thrashing especially when
+//using a TCP connection, as TCP has algorithms to manage its window size.
+//http://en.wikipedia.org/wiki/Silly_window_syndrome
 func (r *Reader) LimitChan(c <-chan uint64) {
 	r.rMut.Lock()
 	r.rate = c
 	r.rMut.Unlock()
 }
 
-//Close will block until eof is reached. Once reached, any errors will be
+//Wait will block until eof is reached. Once reached, any errors will be
 //returned. It is intended to provide synchronization for external channel
 //managers
 func (r *Reader) Wait() {
