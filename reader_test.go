@@ -142,6 +142,16 @@ func TestBasicLimit(t *testing.T) {
 	if n != expected {
 		t.Error("Wrong number of bytes written in first window: %d, should be %d", n, expected)
 	}
+
+	n2, err2 := r.Read(p)
+
+	if err2 != nil {
+		t.Errorf("message")
+	}
+
+	if n2 != expected {
+		t.Errorf("wrong number: %d", n2)
+	}
 }
 
 const testEofText = "foobarbaz"

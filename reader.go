@@ -44,7 +44,7 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 
 	var b byte
 	for written < len(p) {
-		if r.rate != nil {
+		if r.rater() != nil {
 			if r.remain == 0 {
 				select {
 				case r.remain = <-r.rater():
@@ -84,7 +84,7 @@ const window = 100 * time.Microsecond
 //It is safe to assume that Reader.Limit can be called concurrently with a Read
 //operation, though the Read operation will continue to use the prior rate until
 //it is requests a rate update.
-func (r *Reader) Limit(n uint64, t time.Duration) error {
+func (r *Reader) Limit(n uint64, t time.Duration) {
 
 	ratio := float64(t) / float64(window)
 	nPer := float64(n) / ratio
@@ -103,15 +103,15 @@ func (r *Reader) Limit(n uint64, t time.Duration) error {
 	r.rMut.Lock()
 	r.rate = ch
 	r.rMut.Unlock()
+
 	go func() {
 		tkr := time.NewTicker(t)
 		for !r.eof {
 			<-tkr.C
 			ch <- n
 		}
+		close(ch)
 	}()
-
-	return nil
 }
 
 func (r *Reader) LimitChan(c <-chan uint64) {
