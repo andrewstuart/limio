@@ -2,31 +2,24 @@ package limio
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
-
-type testLimiter struct {
-	c chan ByteCount
-}
-
-func (tl *testLimiter) GetLimit() <-chan ByteCount {
-	return tl.c
-}
 
 func TestLimitedReader(t *testing.T) {
 	r := strings.NewReader(testText)
 
-	tl := &testLimiter{
-		c: make(chan ByteCount),
-	}
+	c := make(chan uint64)
 
-	lr := NewReader(r, tl)
+	lr := NewReader(r)
+	lr.LimitChan(c)
 
 	nBytes := 20
 	go func() {
-		tl.c <- ByteCount(nBytes)
+		c <- uint64(nBytes)
 	}()
 
 	p := make([]byte, 512)
@@ -46,8 +39,8 @@ func TestLimitedReader(t *testing.T) {
 	}
 
 	go func() {
-		tl.c <- ByteCount(nBytes / 2)
-		tl.c <- ByteCount(nBytes / 2)
+		c <- uint64(nBytes / 2)
+		c <- uint64(nBytes / 2)
 	}()
 
 	n2, err2 := lr.Read(p)
@@ -67,7 +60,7 @@ func TestLimitedReader(t *testing.T) {
 	p2 := make([]byte, nBytes)
 
 	go func() {
-		tl.c <- MB
+		c <- MB
 	}()
 
 	n3, err3 := lr.Read(p2)
@@ -83,12 +76,14 @@ func TestLimitedReader(t *testing.T) {
 
 func TestEOF(t *testing.T) {
 	r := strings.NewReader(testEofText)
-	l := &testLimiter{
-		c: make(chan ByteCount),
-	}
-	lr := NewReader(r, l)
+
+	c := make(chan uint64)
+
+	lr := NewReader(r)
+	lr.LimitChan(c)
+
 	go func() {
-		l.c <- MB
+		c <- MB
 	}()
 
 	p := make([]byte, 20)
@@ -111,6 +106,35 @@ func TestEOF(t *testing.T) {
 	if n2 > 0 {
 		t.Errorf("Bytes were READ after EOF: %d", n2)
 	}
+}
+
+func TestNoLimit(t *testing.T) {
+	r := NewReader(strings.NewReader(testText))
+	p := make([]byte, len(testText))
+
+	n, err := r.Read(p)
+
+	if err != nil {
+		t.Errorf("error reading: %v", err)
+	}
+
+	if n != len(testText) {
+		t.Errorf("Wrong number of bytes read: %d, should be %d", n, len(testText))
+	}
+
+	if !bytes.Equal([]byte(testText), p) {
+		t.Errorf("Bytes did not equal test read")
+	}
+}
+
+func TestBasicLimit(t *testing.T) {
+	r := NewReader(strings.NewReader(testText))
+	r.Limit(uint64(80), time.Second)
+
+	p := make([]byte, len(testText))
+	n, err := r.Read(p)
+
+	fmt.Println(n, err)
 }
 
 const testEofText = "foobarbaz"

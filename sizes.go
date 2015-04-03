@@ -1,8 +1,8 @@
 package limio
 
-//Some useful constants with the proper typing
+//Some useful byte-sized (heh) constants
 const (
-	B ByteCount = 1 << (10 * (iota))
+	B uint64 = 1 << (10 * (iota))
 	KB
 	MB
 	GB

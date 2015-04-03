@@ -3,74 +3,140 @@ package limio
 import (
 	"bufio"
 	"io"
+	"math"
+	"sync"
+	"time"
 )
 
-//A ByteCount is simply an abstraction over some integer type to provide more
-//flexibility should the type need to be changed. Since zettabyte overflows
-//uint64, I suppose it may someday need to be changed.
-type ByteCount uint64
-
-//A Limiter should implement some strategy for providing access to a shared io
-//resource.  The GetLimit() function must return a channel of ByteCount. When
-//it is appropriate for the new limited io.Reader to read some amount of data,
-//that amount should be sent through the channel, at which point the io.Reader
-//will "burstily" read until it has exhausted the number of bytes it was told
-//to read.
+//A Limiter gets some stream of things. It only lets N things through per T time.
+//It can either be given both T and N or block and wait for N on a channel.
+//In this case, T is handled externally to the limiter.
 //
-//Caution is recommended when implementing a Limiter if this bursty behavior is
-//undesireable. If undesireable, make sure that any large ByteCounts are broken
-//up into smaller values sent at shorter intervals. See BasicReader for a good
-//example of how this can be achieved.
+//Most simply, underlying implementation should always use a channel. It can be
+//replaced with a new channel directly or by providing N and T at which point
+//an internal channel is set up.
 type Limiter interface {
-	Limit(<-chan ByteCount)
-}
-
-//NewReader takes an io.Reader and a Limiter and returns an io.Reader that will
-//be limited via the strategy that Limiter choses to implement.
-func NewReader(r io.Reader, l Limiter) *Reader {
-	return &Reader{
-		br: bufio.NewReader(r),
-	}
+	Limit(n uint64, t time.Duration)
+	LimitChan(<-chan uint64)
 }
 
 type Reader struct {
-	br        *bufio.Reader
-	c         <-chan ByteCount
-	eof       bool
-	remaining ByteCount
+	br     *bufio.Reader
+	eof    bool
+	done   *sync.WaitGroup
+	remain uint64
+
+	rMut sync.RWMutex
+	rate <-chan uint64
 }
 
-func (lr *Reader) Read(p []byte) (written int, err error) {
-	if lr.eof {
+func (r *Reader) rater() <-chan uint64 {
+	r.rMut.RLock()
+	defer r.rMut.RUnlock()
+	return r.rate
+}
+
+func (r *Reader) Read(p []byte) (written int, err error) {
+	if r.eof {
 		err = io.EOF
 		return
 	}
 
 	var b byte
 	for written < len(p) {
-		if lr.remaining == 0 {
-			select {
-			case lr.remaining = <-lr.c:
-				break
-			default:
-				if written > 0 {
-					return
-				} else {
-					lr.remaining = <-lr.c
+		if r.rate != nil {
+			if r.remain == 0 {
+				select {
+				case r.remain = <-r.rater():
+					break
+				default:
+
+					if written > 0 {
+						return
+					}
+					r.remain = <-r.rater()
 				}
 			}
 		}
+		b, err = r.br.ReadByte()
 
-		b, err = lr.br.ReadByte()
-
-		if err == io.EOF {
-			lr.eof = true
+		if err != nil {
 			return
 		}
 
 		p[written] = b
 		written++
-		lr.remaining--
+		if r.rate != nil {
+			r.remain--
+		}
 	}
+
 	return
+}
+
+const window = 100 * time.Microsecond
+
+//Limit provides a basic means for limiting a Reader. Given n bytes per t
+//time, it does its best to maintain a constant rate with a high degree of
+//accuracy to allow other algorithms (such as TCP window sizing, e.g.) to
+//self-adjust.
+//
+//It is safe to assume that Reader.Limit can be called concurrently with a Read
+//operation, though the Read operation will continue to use the prior rate until
+//it is requests a rate update.
+func (r *Reader) Limit(n uint64, t time.Duration) error {
+
+	ratio := float64(t) / float64(window)
+	nPer := float64(n) / ratio
+	n = uint64(nPer)
+
+	if nPer < 1.0 {
+		t = time.Duration(math.Pow(nPer, -1))
+		n = 1
+	} else {
+		t = window
+	}
+
+	//TODO make sure no memory leaks
+	ch := make(chan uint64)
+
+	r.rMut.Lock()
+	r.rate = ch
+	r.rMut.Unlock()
+	go func() {
+		tkr := time.NewTicker(t)
+		for !r.eof {
+			<-tkr.C
+			ch <- n
+		}
+	}()
+
+	return nil
+}
+
+func (r *Reader) LimitChan(c <-chan uint64) {
+	r.rMut.Lock()
+	r.rate = c
+	r.rMut.Unlock()
+}
+
+//Close will block until eof is reached. Once reached, any errors will be
+//returned. It is intended to provide synchronization for external channel
+//managers
+func (r *Reader) Close() error {
+	if !r.eof {
+		r.done.Wait()
+	}
+	return nil
+}
+
+//NewReader takes an io.Reader and returns a Limitable *Reader.
+func NewReader(r io.Reader) *Reader {
+	nr := Reader{
+		br:   bufio.NewReader(r),
+		done: &sync.WaitGroup{},
+		rMut: sync.RWMutex{},
+	}
+	nr.done.Add(1)
+	return &nr
 }
