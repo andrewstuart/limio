@@ -24,6 +24,15 @@ type Limiter interface {
 	LimitChan(<-chan uint64)
 }
 
+//LimitWaiter is a limiter that also exposes the ability to know when the
+//underlying data has been completed. Wait() in this context is identical to
+//sync.WaitGroup.Wait() (and is most likely implemented with a sync.WaitGroup)
+//in that it blocks until it is freed by the underlying implementation.
+type LimitWaiter interface {
+	Limiter
+	Wait()
+}
+
 type Reader struct {
 	r      io.Reader
 	buf    []byte
@@ -152,11 +161,11 @@ func (r *Reader) LimitChan(c <-chan uint64) {
 //Close will block until eof is reached. Once reached, any errors will be
 //returned. It is intended to provide synchronization for external channel
 //managers
-func (r *Reader) Close() error {
+func (r *Reader) Wait() {
 	if !r.eof {
 		r.done.Wait()
 	}
-	return nil
+	return
 }
 
 //NewReader takes an io.Reader and returns a Limitable Reader.

@@ -41,18 +41,6 @@ func (rm *EqualLimiter) NewReader(r io.Reader) *Reader {
 	lr := NewReader(r)
 	rm.ManageLimiter(lr)
 
-	ch := make(chan uint64)
-	lr.LimitChan(ch)
-
-	rm.rmap[lr] = ch
-
-	//When lr closes, close the channel and remove it from the map
-	go func() {
-		lr.Close()
-		close(ch)
-		delete(rm.rmap, lr)
-	}()
-
 	return lr
 }
 
@@ -64,6 +52,19 @@ func (rm *EqualLimiter) LimitChan(<-chan uint64) {
 
 //ManageLimiter accepts a Limiter to be managed under the new "scope"
 //established by this parent Limiter.
-func (rm *EqualLimiter) ManageLimiter(lr Limiter) {
-	return
+func (rm *EqualLimiter) ManageLimiter(lr LimitWaiter) {
+	ch := make(chan uint64)
+	lr.LimitChan(ch)
+
+	rm.rmap[lr] = ch
+
+	//When lr closes, close the channel and remove it from the map
+	//TODO figure out a way to know when to remove other Limiters
+	//Limiter.Free()? Limiter.Done()? Is it really the Limiter's responsibility
+	//to have a mechanism for this?
+	go func() {
+		lr.Wait()
+		close(ch)
+		delete(rm.rmap, lr)
+	}()
 }
