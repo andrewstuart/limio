@@ -2,7 +2,6 @@ package limio
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -129,12 +128,20 @@ func TestNoLimit(t *testing.T) {
 
 func TestBasicLimit(t *testing.T) {
 	r := NewReader(strings.NewReader(testText))
-	r.Limit(uint64(80), time.Second)
+	r.Limit(uint64(80), time.Millisecond)
 
 	p := make([]byte, len(testText))
 	n, err := r.Read(p)
 
-	fmt.Println(n, err)
+	if err != nil {
+		t.Errorf("error reading: %v", err)
+	}
+
+	expected := 8
+
+	if n != expected {
+		t.Error("Wrong number of bytes written in first window: %d, should be %d", n, expected)
+	}
 }
 
 const testEofText = "foobarbaz"
