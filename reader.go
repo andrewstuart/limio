@@ -1,11 +1,15 @@
 package limio
 
 import (
-	"bufio"
 	"io"
 	"math"
 	"sync"
 	"time"
+)
+
+const (
+	window  = 100 * time.Microsecond
+	bufsize = KB << 3
 )
 
 //A Limiter gets some stream of things. It only lets N things through per T time.
@@ -21,7 +25,8 @@ type Limiter interface {
 }
 
 type Reader struct {
-	br     *bufio.Reader
+	r      io.Reader
+	buf    []byte
 	eof    bool
 	done   *sync.WaitGroup
 	remain uint64
@@ -37,13 +42,21 @@ func (r *Reader) rater() <-chan uint64 {
 }
 
 func (r *Reader) Read(p []byte) (written int, err error) {
+	if r.r == nil {
+		err = io.ErrUnexpectedEOF
+		return
+	}
 	if r.eof {
 		err = io.EOF
 		return
 	}
 
-	var b byte
+	if r.buf == nil {
+		r.buf = make([]byte, bufsize)
+	}
+
 	for written < len(p) {
+		var lim uint64
 		if r.rater() != nil {
 			if r.remain == 0 {
 				select {
@@ -57,24 +70,39 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 					r.remain = <-r.rater()
 				}
 			}
+
+			lim = r.remain
 		}
-		b, err = r.br.ReadByte()
+
+		if lim == 0 {
+			lim -= 1
+		}
+
+		if lim > uint64(len(p[written:])) {
+			lim = uint64(len(p[written:]))
+		}
+
+		var n int
+		n, err = r.r.Read(r.buf[:lim])
+
+		copy(p[written:], r.buf[:n])
+		written += n
+
+		if r.rater() != nil {
+			r.remain -= uint64(n)
+		}
 
 		if err != nil {
+			if err == io.EOF {
+				r.eof = true
+				r.done.Done()
+			}
+
 			return
 		}
-
-		p[written] = b
-		written++
-		if r.rate != nil {
-			r.remain--
-		}
 	}
-
 	return
 }
-
-const window = 100 * time.Microsecond
 
 //Limit provides a basic means for limiting a Reader. Given n bytes per t
 //time, it does its best to maintain a constant rate with a high degree of
@@ -85,7 +113,6 @@ const window = 100 * time.Microsecond
 //operation, though the Read operation will continue to use the prior rate until
 //it is requests a rate update.
 func (r *Reader) Limit(n uint64, t time.Duration) {
-
 	ratio := float64(t) / float64(window)
 	nPer := float64(n) / ratio
 	n = uint64(nPer)
@@ -104,13 +131,15 @@ func (r *Reader) Limit(n uint64, t time.Duration) {
 	r.rate = ch
 	r.rMut.Unlock()
 
+	tkr := time.NewTicker(t)
 	go func() {
-		tkr := time.NewTicker(t)
-		for !r.eof {
-			<-tkr.C
+		for _ = range tkr.C {
+			if r.eof {
+				return
+			}
+
 			ch <- n
 		}
-		close(ch)
 	}()
 }
 
@@ -130,13 +159,21 @@ func (r *Reader) Close() error {
 	return nil
 }
 
-//NewReader takes an io.Reader and returns a Limitable *Reader.
+//NewReader takes an io.Reader and returns a Limitable Reader.
 func NewReader(r io.Reader) *Reader {
-	nr := Reader{
-		br:   bufio.NewReader(r),
-		done: &sync.WaitGroup{},
-		rMut: sync.RWMutex{},
+	switch r := r.(type) {
+	case *Reader:
+		return r
+	default:
+		nr := Reader{
+			r:    r,
+			buf:  make([]byte, bufsize),
+			done: &sync.WaitGroup{},
+			rMut: sync.RWMutex{},
+		}
+
+		nr.done.Add(1)
+
+		return &nr
 	}
-	nr.done.Add(1)
-	return &nr
 }

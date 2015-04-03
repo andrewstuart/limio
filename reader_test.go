@@ -124,6 +124,26 @@ func TestNoLimit(t *testing.T) {
 	if !bytes.Equal([]byte(testText), p) {
 		t.Errorf("Bytes did not equal test read")
 	}
+
+	n2, err2 := r.Read(p)
+
+	if err2 != io.EOF {
+		t.Errorf("error reading EOF: %v", err2)
+	}
+
+	if n2 != 0 {
+		t.Errorf("Read > 0 (%d) when should have only gotten EOF", n2)
+	}
+
+	n3, err3 := r.Read(p)
+
+	if err3 != io.EOF {
+		t.Errorf("error reading EOF: %v", err3)
+	}
+
+	if n3 != 0 {
+		t.Errorf("Read > 0 (%d) when should have only gotten EOF", n3)
+	}
 }
 
 func TestBasicLimit(t *testing.T) {
