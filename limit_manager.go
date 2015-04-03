@@ -5,22 +5,22 @@ import (
 	"time"
 )
 
-type ReadManager struct {
+type LimitManager struct {
 	rmap map[Limiter]<-chan uint64
 }
 
-func (rm *ReadManager) run() {
+func (rm *LimitManager) run() {
 }
 
-func NewReadManager() *ReadManager {
-	rm := ReadManager{
+func NewReadManager() *LimitManager {
+	rm := LimitManager{
 		rmap: make(map[Limiter]<-chan uint64),
 	}
 
 	return &rm
 }
 
-func (rm *ReadManager) NewReader(r io.Reader) *Reader {
+func (rm *LimitManager) NewReader(r io.Reader) *Reader {
 	lr := NewReader(r)
 
 	ch := make(chan uint64)
@@ -38,11 +38,11 @@ func (rm *ReadManager) NewReader(r io.Reader) *Reader {
 	return nil
 }
 
-func (rm *ReadManager) Limit(n uint64, t time.Duration) {
+func (rm *LimitManager) Limit(n uint64, t time.Duration) {
 }
 
-func (rm *ReadManager) LimitChan(<-chan uint64) {
+func (rm *LimitManager) LimitChan(<-chan uint64) {
 }
 
-func (rm *ReadManager) AddLimiter(Limiter) {
+func (rm *LimitManager) Manage(Limiter) {
 }
