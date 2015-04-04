@@ -160,7 +160,7 @@ func TestBasicLimit(t *testing.T) {
 	expected := 8
 
 	if n != expected {
-		t.Error("Wrong number of bytes written in first window: %d, should be %d", n, expected)
+		t.Errorf("Wrong number of bytes written in first window: %d, should be %d", n, expected)
 	}
 
 	n2, err2 := r.Read(p)

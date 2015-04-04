@@ -9,8 +9,26 @@ import (
 
 const (
 	window  = 100 * time.Microsecond
+	Max64   = 1<<64 - 1
 	bufsize = KB << 3
 )
+
+//Distribute takes a rate (n, t) and window (w), evenly distributes the n/t to
+//n'/t' (n'<=n && t'>=w)
+func Distribute(n uint64, t, w time.Duration) (uint64, time.Duration) {
+	ratio := float64(t) / float64(window)
+	nPer := float64(n) / ratio
+	n = uint64(nPer)
+
+	if nPer < 1.0 {
+		t = time.Duration(math.Pow(nPer, -1))
+		n = 1
+	} else {
+		t = w
+	}
+
+	return n, t
+}
 
 //A Limiter gets some stream of things. It only lets N things through per T time.
 //It can either be given both T and N or block and wait for N on a channel.
@@ -53,11 +71,13 @@ func (r *Reader) rater() <-chan uint64 {
 	return r.rate
 }
 
+func (r *Reader) setRate(ra <-chan uint64) {
+	r.rMut.Lock()
+	r.rate = ra
+	r.rMut.Unlock()
+}
+
 func (r *Reader) Read(p []byte) (written int, err error) {
-	if r.r == nil {
-		err = io.ErrUnexpectedEOF
-		return
-	}
 	if r.eof {
 		err = io.EOF
 		return
@@ -67,31 +87,30 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 		r.buf = make([]byte, bufsize)
 	}
 
-	for written < len(p) {
+	for written < len(p) && err == nil {
 		var lim uint64
 		if r.rater() != nil {
 			if r.remain == 0 {
 				select {
 				case r.remain = <-r.rater():
-					break
 				default:
-
 					if written > 0 {
 						return
 					}
 					r.remain = <-r.rater()
 				}
 			}
-
 			lim = r.remain
-		}
-
-		if lim == 0 {
-			lim -= 1
+		} else {
+			lim = Max64
 		}
 
 		if lim > uint64(len(p[written:])) {
 			lim = uint64(len(p[written:]))
+		}
+
+		if lim > uint64(len(r.buf)) {
+			lim = uint64(len(r.buf))
 		}
 
 		var n int
@@ -109,7 +128,6 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 				r.eof = true
 				r.done.Done()
 			}
-
 			return
 		}
 	}
@@ -125,33 +143,25 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 //operation, though the Read operation will continue to use the prior rate until
 //it is requests a rate update.
 func (r *Reader) Limit(n uint64, t time.Duration) {
-	ratio := float64(t) / float64(window)
-	nPer := float64(n) / ratio
-	n = uint64(nPer)
-
-	if nPer < 1.0 {
-		t = time.Duration(math.Pow(nPer, -1))
-		n = 1
-	} else {
-		t = window
+	//Skip calc if unneeded
+	if t != window {
+		n, t = Distribute(n, t, window)
 	}
 
 	//TODO make sure no memory leaks
 	ch := make(chan uint64)
+	r.setRate(ch)
 
-	r.rMut.Lock()
-	r.rate = ch
-	r.rMut.Unlock()
-
-	tkr := time.NewTicker(t)
 	go func() {
-		for _ = range tkr.C {
-			if r.eof {
-				return
-			}
+		tkr := time.NewTicker(t)
 
+		for !r.eof {
+			<-tkr.C
 			ch <- n
 		}
+
+		close(ch)
+		tkr.Stop()
 	}()
 }
 
@@ -162,18 +172,14 @@ func (r *Reader) Limit(n uint64, t time.Duration) {
 //using a TCP connection, as TCP has algorithms to manage its window size.
 //http://en.wikipedia.org/wiki/Silly_window_syndrome
 func (r *Reader) LimitChan(c <-chan uint64) {
-	r.rMut.Lock()
-	r.rate = c
-	r.rMut.Unlock()
+	r.setRate(c)
 }
 
 //Wait will block until eof is reached. Once reached, any errors will be
 //returned. It is intended to provide synchronization for external channel
 //managers
 func (r *Reader) Wait() {
-	if !r.eof {
-		r.done.Wait()
-	}
+	r.done.Wait()
 	return
 }
 
@@ -189,9 +195,7 @@ func NewReader(r io.Reader) *Reader {
 			done: &sync.WaitGroup{},
 			rMut: sync.RWMutex{},
 		}
-
 		nr.done.Add(1)
-
 		return &nr
 	}
 }

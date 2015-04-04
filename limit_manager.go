@@ -1,6 +1,7 @@
 package limio
 
 import (
+	"fmt"
 	"io"
 	"time"
 )
@@ -8,63 +9,73 @@ import (
 //An EqualLimiter is itself a limiter and will evenly distribute the limits
 //it is given across all its managed Limiters.
 type EqualLimiter struct {
-	rmap   map[Limiter]chan uint64
-	rate   <-chan uint64
+	rmap   map[Limiter](chan uint64)
 	remain uint64
+	rate   <-chan uint64
 }
 
-func (rm *EqualLimiter) run() {
+func (el *EqualLimiter) run() {
 	for {
-		lim := <-rm.rate
+		lim := <-el.rate
 
-		perChan := uint64(float64(lim) / float64(len(rm.rmap)))
-
-		for _, c := range rm.rmap {
-			go func() {
-				c <- perChan
-			}()
+		//Split out the write across each channel we're managing
+		perChan := uint64(float64(lim) / float64(len(el.rmap)))
+		for l := range el.rmap {
+			el.rmap[l] <- perChan
 		}
 	}
 }
 
 func NewEqualLimiter() *EqualLimiter {
-	rm := EqualLimiter{
+	el := EqualLimiter{
 		rmap: make(map[Limiter]chan uint64),
 	}
+	go el.run()
 
-	return &rm
+	return &el
 }
 
 //NewReader is a convenience that will automatically wrap an io.Reader with the
 //internal Limiter implementation.
-func (rm *EqualLimiter) NewReader(r io.Reader) *Reader {
+func (el *EqualLimiter) NewReader(r io.Reader) *Reader {
 	lr := NewReader(r)
-	rm.ManageLimiter(lr)
-
+	el.ManageLimiter(lr)
 	return lr
 }
 
-func (rm *EqualLimiter) Limit(n uint64, t time.Duration) {
+//Limit for the EqualLimiter sets a shared rate limit for all Limiters managed
+//by the EqualLimiter
+func (el *EqualLimiter) Limit(n uint64, t time.Duration) {
+	n, t = Distribute(n, t, window)
+	ch := make(chan uint64)
+
+	//TODO make sure there's no memory leak
+	go func() {
+		for {
+			time.Sleep(t)
+			ch <- n
+		}
+	}()
+	el.rate = ch
 }
 
-func (rm *EqualLimiter) LimitChan(<-chan uint64) {
+func (el *EqualLimiter) LimitChan(rl <-chan uint64) {
+	el.rate = rl
 }
 
 //ManageLimiter accepts a Limiter to be managed under the new "scope"
 //established by this parent Limiter.
-func (rm *EqualLimiter) ManageLimiter(lr LimitWaiter) {
+func (el *EqualLimiter) ManageLimiter(lr LimitWaiter) {
 	ch := make(chan uint64)
 	lr.LimitChan(ch)
 
-	rm.rmap[lr] = ch
+	el.rmap[lr] = ch
 
-	//When lr closes, close the channel and remove it from the map
-	//TODO figure out a way to know when to remove other Limiters
-	//Limiter.Free()? Limiter.Done()? Is it really the Limiter's responsibility
-	//to have a mechanism for this?
+	fmt.Println(len(el.rmap))
+
 	go func() {
 		lr.Wait()
+		delete(el.rmap, lr)
 		close(ch)
-		delete(rm.rmap, lr)
 	}()
 }
