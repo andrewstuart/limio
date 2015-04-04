@@ -126,7 +126,7 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 		if err != nil {
 			if err == io.EOF {
 				r.eof = true
-				r.done.Done()
+				defer r.done.Done()
 			}
 			return
 		}

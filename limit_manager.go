@@ -76,9 +76,9 @@ func (el *EqualLimiter) ManageLimiter(lr LimitWaiter) {
 
 	el.rmap[lr] = ch
 
-	go func() {
+	go func(lr LimitWaiter) {
 		lr.Wait()
 		close(ch)
 		delete(el.rmap, lr)
-	}()
+	}(lr)
 }
