@@ -1,7 +1,6 @@
 package limio
 
 import (
-	"fmt"
 	"io"
 	"time"
 )
@@ -21,7 +20,13 @@ func (el *EqualLimiter) run() {
 		//Split out the write across each channel we're managing
 		perChan := uint64(float64(lim) / float64(len(el.rmap)))
 		for l := range el.rmap {
-			el.rmap[l] <- perChan
+			select {
+			case el.rmap[l] <- perChan:
+			case <-time.After(100 * time.Millisecond):
+				//Clean up if channel is blocked
+				//This likely would mean channel is done reading
+				delete(el.rmap, l)
+			}
 		}
 	}
 }
@@ -71,11 +76,9 @@ func (el *EqualLimiter) ManageLimiter(lr LimitWaiter) {
 
 	el.rmap[lr] = ch
 
-	fmt.Println(len(el.rmap))
-
 	go func() {
 		lr.Wait()
-		delete(el.rmap, lr)
 		close(ch)
+		delete(el.rmap, lr)
 	}()
 }
