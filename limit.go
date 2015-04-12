@@ -32,13 +32,12 @@ func (r *Reader) limit() {
 	er := rate{}
 	currLim := &limit{}
 
-	var currNotify chan<- bool
 	currTicker := &time.Ticker{}
 
 	for {
 		select {
 		case <-r.cls:
-			go notify(currNotify)
+			go notify(currLim.notify)
 			currTicker.Stop()
 			close(pool)
 			close(r.newLimit)
@@ -49,8 +48,7 @@ func (r *Reader) limit() {
 		case <-currTicker.C:
 			pool <- currLim.rate.n
 		case l := <-r.newLimit:
-			go notify(currNotify)
-			currNotify = l.notify
+			go notify(currLim.notify)
 
 			if l != nil {
 
@@ -68,6 +66,7 @@ func (r *Reader) limit() {
 				currLim = l
 			} else {
 				currTicker.Stop()
+				currLim = &limit{}
 
 				r.limitedM.Lock()
 				r.limited = false
