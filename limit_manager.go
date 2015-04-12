@@ -1,6 +1,9 @@
 package limio
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type managed struct {
 	l   Limiter
@@ -38,12 +41,18 @@ func (lm *LimitManager) run() {
 	for {
 		select {
 		case <-currTicker.C:
+			if len(lm.m) == 0 {
+				continue
+			}
 			//Distribute
 			each := currLim.rate.n / len(lm.m)
 			for _, lim := range lm.m {
 				lim.lim <- each
 			}
 		case tot := <-currLim.lim:
+			if len(lm.m) == 0 {
+				continue
+			}
 			each := tot / len(lm.m)
 			for _, lim := range lm.m {
 				lim.lim <- each
@@ -55,6 +64,7 @@ func (lm *LimitManager) run() {
 				} else {
 					n, t := Distribute(newLim.rate.n, newLim.rate.t, DefaultWindow)
 					newLim.rate = rate{n, t}
+					currTicker = time.NewTicker(t)
 				}
 
 				currLim = newLim
@@ -64,6 +74,7 @@ func (lm *LimitManager) run() {
 		case nl := <-lm.newLimiter:
 			lm.m[nl.l] = nl
 		case toClose := <-lm.clsLimiter:
+			fmt.Println("close")
 			delete(lm.m, toClose)
 		case <-lm.unlimit:
 			for _, l := range lm.m {
@@ -76,11 +87,19 @@ func (lm *LimitManager) run() {
 
 func (lm *LimitManager) Limit(n int, t time.Duration) <-chan bool {
 	done := make(chan bool)
+	lm.newLimit <- &limit{
+		rate:   rate{n, t},
+		notify: done,
+	}
 	return done
 }
 
-func (lm *LimitManager) LimitChan(chan int) <-chan bool {
+func (lm *LimitManager) LimitChan(l chan int) <-chan bool {
 	done := make(chan bool)
+	lm.newLimit <- &limit{
+		lim:    l,
+		notify: done,
+	}
 	return done
 }
 

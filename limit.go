@@ -50,6 +50,7 @@ func (r *Reader) limit() {
 			pool <- currLim.rate.n
 		case l := <-r.newLimit:
 			go notify(currNotify)
+			currNotify = l.notify
 
 			if l != nil {
 
@@ -63,6 +64,7 @@ func (r *Reader) limit() {
 				} else {
 					currTicker.Stop()
 				}
+
 				currLim = l
 			} else {
 				currTicker.Stop()
