@@ -30,12 +30,10 @@ func (r *Reader) limit() {
 	}()
 
 	er := rate{}
-	currLim := &limit{
-		rate: rate{n: 1<<63 - 1},
-	}
+	currLim := &limit{}
 
 	var currNotify chan<- bool
-	currTicker := time.NewTicker(DefaultWindow)
+	currTicker := &time.Ticker{}
 
 	for {
 		select {
@@ -54,6 +52,11 @@ func (r *Reader) limit() {
 			go notify(currNotify)
 
 			if l != nil {
+
+				r.limitedM.Lock()
+				r.limited = true
+				r.limitedM.Unlock()
+
 				if l.rate != er {
 					l.rate.n, l.rate.t = Distribute(l.rate.n, l.rate.t, DefaultWindow)
 					currTicker = time.NewTicker(l.rate.t)
@@ -62,8 +65,11 @@ func (r *Reader) limit() {
 				}
 				currLim = l
 			} else {
-				currTicker = time.NewTicker(DefaultWindow)
-				currLim.rate.n = 1<<63 - 1
+				currTicker.Stop()
+
+				r.limitedM.Lock()
+				r.limited = false
+				r.limitedM.Unlock()
 			}
 		}
 	}

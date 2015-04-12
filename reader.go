@@ -1,10 +1,16 @@
 package limio
 
-import "io"
+import (
+	"io"
+	"sync"
+)
 
 type Reader struct {
 	r   io.Reader
 	eof bool
+
+	limitedM *sync.RWMutex
+	limited  bool
 
 	rate     chan int
 	used     chan int
@@ -15,6 +21,7 @@ type Reader struct {
 func NewReader(r io.Reader) *Reader {
 	lr := Reader{
 		r:        r,
+		limitedM: &sync.RWMutex{},
 		newLimit: make(chan *limit),
 		rate:     make(chan int, 1000),
 		used:     make(chan int),
@@ -36,27 +43,30 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 		return
 	}
 
+	var n int
+	var lim int
 	for written < len(p) && err == nil {
-		var lim int
-		select {
-		case lim = <-r.rate:
-		default:
-			if written > 0 {
-				return
-			} else {
-				lim = <-r.rate
+
+		r.limitedM.RLock()
+		if r.limited {
+			select {
+			case lim = <-r.rate:
+			default:
+				if written > 0 {
+					return
+				} else {
+					lim = <-r.rate
+				}
 			}
+		} else {
+			lim = len(p[written:])
 		}
+		r.limitedM.RUnlock()
 
 		if lim > len(p[written:]) {
 			lim = len(p[written:])
 		}
 
-		if lim < 0 {
-			lim = 0
-		}
-
-		var n int
 		n, err = r.r.Read(p[written:][:lim])
 		written += n
 
