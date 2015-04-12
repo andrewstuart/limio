@@ -43,10 +43,13 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 			lim = len(p[written:])
 		}
 
+		if lim < 0 {
+			lim = 0
+		}
+
 		var n int
 		n, err = r.r.Read(p[written:][:lim])
 		written += n
-		r.used <- n
 
 		if err != nil {
 			if err == io.EOF {

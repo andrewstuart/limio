@@ -5,8 +5,6 @@ import (
 	"time"
 )
 
-const DefaultWindow = 100 * time.Microsecond
-
 //Distribute takes a rate (n, t) and window (w), evenly distributes the n/t to
 //n'/t' (n'<=n && t'>=w)
 func Distribute(n int, t, w time.Duration) (int, time.Duration) {

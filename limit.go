@@ -13,33 +13,43 @@ type limit struct {
 	notify chan<- bool
 }
 
-func (r *Reader) limit() {
-	var remaining int
+const DefaultWindow = 10 * time.Millisecond
 
-	var el = limit{}
-	var er = rate{}
-	var currLim limit
+func (r *Reader) limit() {
+	pool := make(chan int, 1000)
+
+	go func() {
+		for {
+			rt, ok := <-pool
+			if !ok {
+				close(r.rate)
+				return
+			}
+			r.rate <- rt
+		}
+	}()
+
+	el := limit{}
+	er := rate{}
+	currLim := el
+
 	var currNotify chan<- bool
 	currTicker := &time.Ticker{}
 
-	//Keep internal channel for sending limits to Read func
-	//Keep internal ticker for n,t limits
 	for {
 		select {
 		case <-r.cls:
 			go notify(currNotify)
 			currTicker.Stop()
+			close(pool)
 			close(r.newLimit)
-			close(r.rate)
 			close(r.used)
 			return
-		case r.rate <- remaining:
-			used := <-r.used
-			remaining -= used
-		case addl := <-currLim.lim:
-			remaining += addl
+		case l := <-currLim.lim:
+			//TODO This could block.
+			pool <- l
 		case <-currTicker.C:
-			remaining += currLim.rate.n
+			pool <- currLim.rate.n
 		case l := <-r.newLimit:
 			go notify(currNotify)
 
@@ -76,12 +86,10 @@ func (r *Reader) Unlimit() {
 
 func (r *Reader) Limit(n int, t time.Duration) <-chan bool {
 	done := make(chan bool)
-
 	r.newLimit <- limit{
 		rate:   rate{n, t},
 		notify: done,
 	}
-
 	return done
 }
 
