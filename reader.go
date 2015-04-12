@@ -1,67 +1,59 @@
 package limio
 
-import (
-	"bufio"
-	"io"
-	"time"
-)
-
-type rate struct {
-	n uint64
-	t time.Duration
-}
-
-type limit struct {
-	lim    <-chan uint64
-	rate   rate
-	notify chan<- bool
-}
+import "io"
 
 type Reader struct {
-	br *bufio.Reader
+	r   io.Reader
+	eof bool
 
+	rate     chan int
+	used     chan int
 	newLimit chan limit
+	cls      chan bool
 }
 
 func NewReader(r io.Reader) *Reader {
 	lr := Reader{
-		br: bufio.NewReader(r),
+		r:        r,
+		newLimit: make(chan limit),
+		rate:     make(chan int, 1000),
+		used:     make(chan int),
+		cls:      make(chan bool),
 	}
 	go lr.limit()
 	return &lr
 }
 
-func (r *Reader) limit() {
-	if r.newLimit == nil {
-		r.newLimit = make(chan limit)
-	}
-
-	//Keep internal channel for sending limits to Read func
-	//Keep internal ticker for n,t limits
-	for {
-		select {}
-	}
+func (r *Reader) Close() error {
+	r.Unlimit()
+	r.cls <- true
+	return nil
 }
 
-func (r *Reader) Unlimit() {
-}
-
-func (r *Reader) Limit(n uint64, t time.Duration) <-chan bool {
-	done := make(chan bool)
-
-	r.newLimit <- limit{
-		rate:   rate{n, t},
-		notify: done,
+func (r *Reader) Read(p []byte) (written int, err error) {
+	if r.eof {
+		err = io.EOF
+		return
 	}
 
-	return done
-}
+	for written < len(p) && err == nil {
+		lim := <-r.rate
 
-func (r *Reader) LimitChan(lch chan uint64) <-chan bool {
-	done := make(chan bool)
-	r.newLimit <- limit{
-		lim:    lch,
-		notify: done,
+		if lim > len(p[written:]) {
+			lim = len(p[written:])
+		}
+
+		var n int
+		n, err = r.r.Read(p[written:][:lim])
+		written += n
+		r.used <- n
+
+		if err != nil {
+			if err == io.EOF {
+				r.eof = true
+			}
+			return
+		}
 	}
-	return done
+	return
 }

@@ -2,7 +2,7 @@ package limio
 
 //Some useful byte-sized (heh) constants
 const (
-	B uint64 = 1 << (10 * (iota))
+	B int = 1 << (10 * (iota))
 	KB
 	MB
 	GB
