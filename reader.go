@@ -8,14 +8,14 @@ type Reader struct {
 
 	rate     chan int
 	used     chan int
-	newLimit chan limit
+	newLimit chan *limit
 	cls      chan bool
 }
 
 func NewReader(r io.Reader) *Reader {
 	lr := Reader{
 		r:        r,
-		newLimit: make(chan limit),
+		newLimit: make(chan *limit),
 		rate:     make(chan int, 1000),
 		used:     make(chan int),
 		cls:      make(chan bool),
@@ -37,7 +37,16 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 	}
 
 	for written < len(p) && err == nil {
-		lim := <-r.rate
+		var lim int
+		select {
+		case lim = <-r.rate:
+		default:
+			if written > 0 {
+				return
+			} else {
+				lim = <-r.rate
+			}
+		}
 
 		if lim > len(p[written:]) {
 			lim = len(p[written:])

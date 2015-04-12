@@ -29,12 +29,13 @@ func (r *Reader) limit() {
 		}
 	}()
 
-	el := limit{}
 	er := rate{}
-	currLim := el
+	currLim := &limit{
+		rate: rate{n: 1<<63 - 1},
+	}
 
 	var currNotify chan<- bool
-	currTicker := &time.Ticker{}
+	currTicker := time.NewTicker(DefaultWindow)
 
 	for {
 		select {
@@ -46,14 +47,13 @@ func (r *Reader) limit() {
 			close(r.used)
 			return
 		case l := <-currLim.lim:
-			//TODO This could block.
 			pool <- l
 		case <-currTicker.C:
 			pool <- currLim.rate.n
 		case l := <-r.newLimit:
 			go notify(currNotify)
 
-			if l != el {
+			if l != nil {
 				if l.rate != er {
 					l.rate.n, l.rate.t = Distribute(l.rate.n, l.rate.t, DefaultWindow)
 					currTicker = time.NewTicker(l.rate.t)
@@ -62,7 +62,8 @@ func (r *Reader) limit() {
 				}
 				currLim = l
 			} else {
-				currTicker.Stop()
+				currTicker = time.NewTicker(DefaultWindow)
+				currLim.rate.n = 1<<63 - 1
 			}
 		}
 	}
@@ -81,12 +82,12 @@ func notify(n chan<- bool) {
 }
 
 func (r *Reader) Unlimit() {
-	r.newLimit <- limit{}
+	r.newLimit <- nil
 }
 
 func (r *Reader) Limit(n int, t time.Duration) <-chan bool {
 	done := make(chan bool)
-	r.newLimit <- limit{
+	r.newLimit <- &limit{
 		rate:   rate{n, t},
 		notify: done,
 	}
@@ -95,7 +96,7 @@ func (r *Reader) Limit(n int, t time.Duration) <-chan bool {
 
 func (r *Reader) LimitChan(lch chan int) <-chan bool {
 	done := make(chan bool)
-	r.newLimit <- limit{
+	r.newLimit <- &limit{
 		lim:    lch,
 		notify: done,
 	}
