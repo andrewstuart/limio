@@ -16,7 +16,7 @@ type limit struct {
 const DefaultWindow = 10 * time.Millisecond
 
 func (r *Reader) limit() {
-	pool := make(chan int, 1000)
+	pool := make(chan int, 10)
 
 	go func() {
 		for {
@@ -25,7 +25,11 @@ func (r *Reader) limit() {
 				close(r.rate)
 				return
 			}
-			r.rate <- rt
+
+			select {
+			case r.rate <- rt:
+			case <-time.After(10 * DefaultWindow):
+			}
 		}
 	}()
 

@@ -1,9 +1,6 @@
 package limio
 
-import (
-	"fmt"
-	"time"
-)
+import "time"
 
 type managed struct {
 	l   Limiter
@@ -41,21 +38,19 @@ func (lm *LimitManager) run() {
 	for {
 		select {
 		case <-currTicker.C:
-			if len(lm.m) == 0 {
-				continue
-			}
-			//Distribute
-			each := currLim.rate.n / len(lm.m)
-			for _, lim := range lm.m {
-				lim.lim <- each
+			if len(lm.m) > 0 {
+				//Distribute
+				each := currLim.rate.n / len(lm.m)
+				for _, lim := range lm.m {
+					lim.lim <- each
+				}
 			}
 		case tot := <-currLim.lim:
-			if len(lm.m) == 0 {
-				continue
-			}
-			each := tot / len(lm.m)
-			for _, lim := range lm.m {
-				lim.lim <- each
+			if len(lm.m) > 0 {
+				each := tot / len(lm.m)
+				for _, lim := range lm.m {
+					lim.lim <- each
+				}
 			}
 		case newLim := <-lm.newLimit:
 			if newLim != nil {
@@ -74,7 +69,7 @@ func (lm *LimitManager) run() {
 		case nl := <-lm.newLimiter:
 			lm.m[nl.l] = nl
 		case toClose := <-lm.clsLimiter:
-			fmt.Println("close")
+			close(lm.m[toClose].lim)
 			delete(lm.m, toClose)
 		case <-lm.unlimit:
 			for _, l := range lm.m {
@@ -105,7 +100,6 @@ func (lm *LimitManager) LimitChan(l chan int) <-chan bool {
 
 func (lm *LimitManager) Unlimit() {
 	lm.unlimit <- struct{}{}
-	close(lm.unlimit)
 }
 
 func (lm *LimitManager) Manage(l Limiter) {
