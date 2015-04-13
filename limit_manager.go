@@ -53,6 +53,7 @@ func (lm *LimitManager) run() {
 				}
 			}
 		case newLim := <-lm.newLimit:
+
 			if newLim != nil {
 				if newLim.rate == er {
 					currTicker.Stop()
@@ -64,9 +65,25 @@ func (lm *LimitManager) run() {
 
 				currLim = newLim
 			} else {
+
+				for l := range lm.m {
+					l.Unlimit()
+				}
 				currTicker.Stop()
 			}
 		case nl := <-lm.newLimiter:
+			if currLim.rate == er && currLim.lim == nil {
+				nl.l.Unlimit()
+			} else {
+
+				//Start limiting
+				nl.lim = make(chan int)
+				go func() {
+					<-nl.l.LimitChan(nl.lim)
+					lm.clsLimiter <- nl.l
+				}()
+
+			}
 			lm.m[nl.l] = nl
 		case toClose := <-lm.clsLimiter:
 			close(lm.m[toClose].lim)
@@ -103,13 +120,5 @@ func (lm *LimitManager) Unlimit() {
 }
 
 func (lm *LimitManager) Manage(l Limiter) {
-	lim := make(chan int)
-	done := l.LimitChan(lim)
-
-	go func() {
-		<-done
-		lm.clsLimiter <- l
-	}()
-
-	lm.newLimiter <- &managed{l, lim}
+	lm.newLimiter <- &managed{l, nil}
 }
