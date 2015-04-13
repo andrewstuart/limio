@@ -2,27 +2,24 @@ package limio
 
 import "time"
 
-type managed struct {
-	l   Limiter
-	lim chan int
-}
-
 type LimitManager struct {
-	m map[Limiter]*managed
+	m map[Limiter]chan int
 
 	newLimit chan *limit
 	unlimit  chan struct{}
+	cls      chan struct{}
 
-	newLimiter chan *managed
+	newLimiter chan Limiter
 	clsLimiter chan Limiter
 }
 
 func NewLimitManager() *LimitManager {
 	lm := LimitManager{
-		m:          make(map[Limiter]*managed),
+		m:          make(map[Limiter]chan int),
 		newLimit:   make(chan *limit),
 		unlimit:    make(chan struct{}),
-		newLimiter: make(chan *managed),
+		cls:        make(chan struct{}),
+		newLimiter: make(chan Limiter),
 		clsLimiter: make(chan Limiter),
 	}
 	go lm.run()
@@ -30,6 +27,7 @@ func NewLimitManager() *LimitManager {
 }
 
 func (lm *LimitManager) run() {
+	limited := false
 	currLim := &limit{}
 	currTicker := &time.Ticker{}
 
@@ -41,20 +39,25 @@ func (lm *LimitManager) run() {
 			if len(lm.m) > 0 {
 				//Distribute
 				each := currLim.rate.n / len(lm.m)
-				for _, lim := range lm.m {
-					lim.lim <- each
+				for _, lch := range lm.m {
+					lch <- each
 				}
 			}
 		case tot := <-currLim.lim:
 			if len(lm.m) > 0 {
 				each := tot / len(lm.m)
-				for _, lim := range lm.m {
-					lim.lim <- each
+				for _, lch := range lm.m {
+					lch <- each
 				}
 			}
 		case newLim := <-lm.newLimit:
-
+			notify(currLim.notify, false)
 			if newLim != nil {
+				limited = true
+				for l := range lm.m {
+					lm.limit(l)
+				}
+
 				if newLim.rate == er {
 					currTicker.Stop()
 				} else {
@@ -65,36 +68,44 @@ func (lm *LimitManager) run() {
 
 				currLim = newLim
 			} else {
-
+				limited = false
 				for l := range lm.m {
 					l.Unlimit()
 				}
 				currTicker.Stop()
 			}
-		case nl := <-lm.newLimiter:
-			if currLim.rate == er && currLim.lim == nil {
-				nl.l.Unlimit()
+		case l := <-lm.newLimiter:
+			if limited {
+				lm.limit(l)
 			} else {
-
-				//Start limiting
-				nl.lim = make(chan int)
-				go func() {
-					<-nl.l.LimitChan(nl.lim)
-					lm.clsLimiter <- nl.l
-				}()
-
+				//still store in map
+				lm.m[l] = nil
 			}
-			lm.m[nl.l] = nl
 		case toClose := <-lm.clsLimiter:
-			close(lm.m[toClose].lim)
+			close(lm.m[toClose])
 			delete(lm.m, toClose)
 		case <-lm.unlimit:
-			for _, l := range lm.m {
-				l.l.Unlimit()
+			for l := range lm.m {
+				l.Unlimit()
 			}
+		case <-lm.cls:
+			for l := range lm.m {
+				l.Unlimit()
+			}
+			notify(currLim.notify, true)
 			return
 		}
 	}
+}
+
+//NOTE must ONLY be used inside of run()
+func (lm *LimitManager) limit(l Limiter) {
+	lm.m[l] = make(chan int)
+	go func() {
+		if <-l.LimitChan(lm.m[l]) {
+			lm.clsLimiter <- l
+		}
+	}()
 }
 
 func (lm *LimitManager) Limit(n int, t time.Duration) <-chan bool {
@@ -119,6 +130,12 @@ func (lm *LimitManager) Unlimit() {
 	lm.unlimit <- struct{}{}
 }
 
+func (lm *LimitManager) Close() error {
+	lm.cls <- struct{}{}
+	return nil
+}
+
 func (lm *LimitManager) Manage(l Limiter) {
-	lm.newLimiter <- &managed{l, nil}
+	l.Unlimit()
+	lm.newLimiter <- l
 }

@@ -28,7 +28,7 @@ func (r *Reader) limit() {
 
 			select {
 			case r.rate <- rt:
-			case <-time.After(10 * DefaultWindow):
+			case <-time.After(3 * DefaultWindow):
 			}
 		}
 	}()
@@ -41,7 +41,7 @@ func (r *Reader) limit() {
 	for {
 		select {
 		case <-r.cls:
-			go notify(currLim.notify)
+			go notify(currLim.notify, true)
 			currTicker.Stop()
 			close(pool)
 			close(r.newLimit)
@@ -52,10 +52,9 @@ func (r *Reader) limit() {
 		case <-currTicker.C:
 			pool <- currLim.rate.n
 		case l := <-r.newLimit:
-			go notify(currLim.notify)
+			go notify(currLim.notify, false)
 
 			if l != nil {
-
 				r.limitedM.Lock()
 				r.limited = true
 				r.limitedM.Unlock()
@@ -80,13 +79,13 @@ func (r *Reader) limit() {
 	}
 }
 
-func notify(n chan<- bool) {
+func notify(n chan<- bool, v bool) {
 	if n == nil {
 		return
 	}
 
 	select {
-	case n <- true:
+	case n <- v:
 	case <-time.After(30 * time.Second):
 	}
 	close(n)
