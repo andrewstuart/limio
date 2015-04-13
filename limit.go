@@ -16,7 +16,7 @@ type limit struct {
 const DefaultWindow = 10 * time.Millisecond
 
 func (r *Reader) limit() {
-	pool := make(chan int, 1000)
+	pool := make(chan int, 10)
 
 	go func() {
 		for {
@@ -25,20 +25,23 @@ func (r *Reader) limit() {
 				close(r.rate)
 				return
 			}
-			r.rate <- rt
+
+			select {
+			case r.rate <- rt:
+			case <-time.After(3 * DefaultWindow):
+			}
 		}
 	}()
 
 	er := rate{}
 	currLim := &limit{}
 
-	var currNotify chan<- bool
 	currTicker := &time.Ticker{}
 
 	for {
 		select {
 		case <-r.cls:
-			go notify(currNotify)
+			go notify(currLim.notify, true)
 			currTicker.Stop()
 			close(pool)
 			close(r.newLimit)
@@ -49,10 +52,9 @@ func (r *Reader) limit() {
 		case <-currTicker.C:
 			pool <- currLim.rate.n
 		case l := <-r.newLimit:
-			go notify(currNotify)
+			go notify(currLim.notify, false)
 
 			if l != nil {
-
 				r.limitedM.Lock()
 				r.limited = true
 				r.limitedM.Unlock()
@@ -63,9 +65,11 @@ func (r *Reader) limit() {
 				} else {
 					currTicker.Stop()
 				}
+
 				currLim = l
 			} else {
 				currTicker.Stop()
+				currLim = &limit{}
 
 				r.limitedM.Lock()
 				r.limited = false
@@ -75,13 +79,13 @@ func (r *Reader) limit() {
 	}
 }
 
-func notify(n chan<- bool) {
+func notify(n chan<- bool, v bool) {
 	if n == nil {
 		return
 	}
 
 	select {
-	case n <- true:
+	case n <- v:
 	case <-time.After(30 * time.Second):
 	}
 	close(n)

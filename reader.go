@@ -23,7 +23,7 @@ func NewReader(r io.Reader) *Reader {
 		r:        r,
 		limitedM: &sync.RWMutex{},
 		newLimit: make(chan *limit),
-		rate:     make(chan int, 1000),
+		rate:     make(chan int, 10),
 		used:     make(chan int),
 		cls:      make(chan bool),
 	}
