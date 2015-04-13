@@ -32,7 +32,6 @@ func NewReader(r io.Reader) *Reader {
 }
 
 func (r *Reader) Close() error {
-	r.Unlimit()
 	r.cls <- true
 	return nil
 }
@@ -49,6 +48,7 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 
 		r.limitedM.RLock()
 		if r.limited {
+			r.limitedM.RUnlock()
 			select {
 			case lim = <-r.rate:
 			default:
@@ -59,9 +59,9 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 				}
 			}
 		} else {
+			r.limitedM.RUnlock()
 			lim = len(p[written:])
 		}
-		r.limitedM.RUnlock()
 
 		if lim > len(p[written:]) {
 			lim = len(p[written:])
