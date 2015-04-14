@@ -36,20 +36,9 @@ func (lm *LimitManager) run() {
 	for {
 		select {
 		case <-currTicker.C:
-			if len(lm.m) > 0 {
-				//Distribute
-				each := currLim.rate.n / len(lm.m)
-				for _, lch := range lm.m {
-					lch <- each
-				}
-			}
+			lm.distribute(currLim.rate.n)
 		case tot := <-currLim.lim:
-			if len(lm.m) > 0 {
-				each := tot / len(lm.m)
-				for _, lch := range lm.m {
-					lch <- each
-				}
-			}
+			lm.distribute(tot)
 		case newLim := <-lm.newLimit:
 			notify(currLim.notify, false)
 			if newLim != nil {
@@ -98,7 +87,19 @@ func (lm *LimitManager) run() {
 	}
 }
 
-//NOTE must ONLY be used inside of run()
+//NOTE must ONLY be used inside of run() for concurrency safety
+func (lm *LimitManager) distribute(n int) {
+	if len(lm.m) > 0 {
+		each := n / len(lm.m)
+		for _, ch := range lm.m {
+			if ch != nil {
+				ch <- each
+			}
+		}
+	}
+}
+
+//NOTE must ONLY be used inside of run() for concurrency safety
 func (lm *LimitManager) limit(l Limiter) {
 	lm.m[l] = make(chan int)
 	go func() {
