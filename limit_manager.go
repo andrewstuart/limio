@@ -1,6 +1,9 @@
 package limio
 
-import "time"
+import (
+	"io"
+	"time"
+)
 
 type LimitManager struct {
 	m map[Limiter]chan int
@@ -40,7 +43,9 @@ func (lm *LimitManager) run() {
 		case tot := <-currLim.lim:
 			lm.distribute(tot)
 		case newLim := <-lm.newLimit:
-			notify(currLim.notify, false)
+
+			go notify(currLim.notify, false)
+
 			if newLim != nil {
 				limited = true
 				for l := range lm.m {
@@ -67,7 +72,7 @@ func (lm *LimitManager) run() {
 			if limited {
 				lm.limit(l)
 			} else {
-				//still store in map
+				l.Unlimit()
 				lm.m[l] = nil
 			}
 		case toClose := <-lm.clsLimiter:
@@ -102,11 +107,19 @@ func (lm *LimitManager) distribute(n int) {
 //NOTE must ONLY be used inside of run() for concurrency safety
 func (lm *LimitManager) limit(l Limiter) {
 	lm.m[l] = make(chan int)
+	done := l.LimitChan(lm.m[l])
+
 	go func() {
-		if <-l.LimitChan(lm.m[l]) {
+		if <-done {
 			lm.clsLimiter <- l
 		}
 	}()
+}
+
+func (lm *LimitManager) NewReader(r io.Reader) *Reader {
+	lr := NewReader(r)
+	lm.Manage(lr)
+	return lr
 }
 
 func (lm *LimitManager) Limit(n int, t time.Duration) <-chan bool {
@@ -137,6 +150,5 @@ func (lm *LimitManager) Close() error {
 }
 
 func (lm *LimitManager) Manage(l Limiter) {
-	l.Unlimit()
 	lm.newLimiter <- l
 }
