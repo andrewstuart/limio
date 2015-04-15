@@ -2,15 +2,12 @@ package limio
 
 import (
 	"io"
-	"net/http"
-	_ "net/http/pprof"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestManager(t *testing.T) {
-	go http.ListenAndServe(":6060", nil)
 
 	lmr := NewSimpleManager()
 	ch := make(chan int, 1)
@@ -43,13 +40,13 @@ func TestManager(t *testing.T) {
 		t.Errorf("Error reading l2: %v", err)
 	}
 
-	lmr.Limit(KB, time.Second)
+	lmr.Limit(KB, 10*time.Millisecond)
 
 	n, err = l1.Read(p)
 	m, err := l2.Read(p)
 
-	if n+m != 10 {
-		t.Errorf("Wrong number of bytes read: %d, should be 50", n+m)
+	if n+m != 1024 {
+		t.Errorf("Wrong number of bytes read: %d, should be 1024", n+m)
 	}
 	if err != nil {
 		t.Errorf("Error reading: %v", err)

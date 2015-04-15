@@ -65,8 +65,12 @@ func (r *Reader) limit() {
 				r.limitedM.Unlock()
 
 				if l.rate != er {
-					l.rate.n, l.rate.t = Distribute(l.rate.n, l.rate.t, DefaultWindow)
-					currTicker = time.NewTicker(l.rate.t)
+					if l.rate.n == 0 {
+						currTicker.Stop()
+					} else {
+						l.rate.n, l.rate.t = Distribute(l.rate.n, l.rate.t, DefaultWindow)
+						currTicker = time.NewTicker(l.rate.t)
+					}
 				} else {
 					currTicker.Stop()
 				}

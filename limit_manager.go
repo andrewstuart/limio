@@ -60,8 +60,12 @@ func (lm *SimpleManager) run() {
 					currTicker.Stop()
 					currLim.lim = newLim.lim
 				} else {
-					currLim.rate.n, currLim.rate.t = Distribute(newLim.rate.n, newLim.rate.t, DefaultWindow)
-					currTicker = time.NewTicker(newLim.rate.t)
+					if newLim.rate.n == 0 {
+						currTicker.Stop()
+					} else {
+						currLim.rate.n, currLim.rate.t = Distribute(newLim.rate.n, newLim.rate.t, DefaultWindow)
+						currTicker = time.NewTicker(newLim.rate.t)
+					}
 				}
 			} else {
 				limited = false
