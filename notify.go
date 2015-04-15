@@ -5,7 +5,11 @@ func notify(n chan<- bool, v bool) {
 		return
 	}
 
-	n <- v
+	select {
+	case n <- v:
+	default:
+		// case <-time.After(time.Second):
+	}
 	if v {
 		close(n)
 	}

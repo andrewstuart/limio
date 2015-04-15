@@ -101,9 +101,7 @@ func (lm *SimpleManager) distribute(n int) {
 				select {
 				case ch <- each:
 				default:
-					//FIXME: does this create a leak?  This will happen if we're unable
-					//to send down the managed limiters' channels. Can we assume Close() will be
-					//called soon?
+					//"Token bucket" full.
 				}
 			}
 		}
@@ -131,7 +129,7 @@ func (lm *SimpleManager) NewReader(r io.Reader) *Reader {
 }
 
 func (lm *SimpleManager) Limit(n int, t time.Duration) <-chan bool {
-	done := make(chan bool)
+	done := make(chan bool, 1)
 	lm.newLimit <- &limit{
 		rate: rate{n, t},
 		done: done,
@@ -140,7 +138,7 @@ func (lm *SimpleManager) Limit(n int, t time.Duration) <-chan bool {
 }
 
 func (lm *SimpleManager) LimitChan(l chan int) <-chan bool {
-	done := make(chan bool)
+	done := make(chan bool, 1)
 	lm.newLimit <- &limit{
 		lim:  l,
 		done: done,

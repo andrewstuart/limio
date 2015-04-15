@@ -1,7 +1,6 @@
 package limio
 
 import (
-	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -36,7 +35,7 @@ func NewReader(r io.Reader) *Reader {
 		r:        r,
 		limitedM: &sync.RWMutex{},
 		newLimit: make(chan *limit),
-		rate:     make(chan int),
+		rate:     make(chan int, 10),
 		used:     make(chan int),
 		cls:      make(chan bool),
 	}
@@ -49,7 +48,7 @@ func (r *Reader) Unlimit() {
 }
 
 func (r *Reader) Limit(n int, t time.Duration) <-chan bool {
-	done := make(chan bool)
+	done := make(chan bool, 1)
 	r.newLimit <- &limit{
 		rate: rate{n, t},
 		done: done,
@@ -58,7 +57,7 @@ func (r *Reader) Limit(n int, t time.Duration) <-chan bool {
 }
 
 func (r *Reader) LimitChan(lch chan int) <-chan bool {
-	done := make(chan bool)
+	done := make(chan bool, 1)
 	r.newLimit <- &limit{
 		lim:  lch,
 		done: done,
@@ -91,7 +90,6 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 					return
 				} else {
 					lim = <-r.rate
-					fmt.Println(lim)
 				}
 			}
 		} else {
@@ -118,22 +116,14 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 
 const DefaultWindow = 10 * time.Millisecond
 
+func (r *Reader) send(i int) {
+	select {
+	case r.rate <- i:
+	default:
+	}
+}
+
 func (r *Reader) run() {
-	pool := make(chan int)
-	defer close(pool)
-
-	go func() {
-		for {
-			rt, ok := <-pool
-			if !ok {
-				close(r.rate)
-				return
-			}
-
-			r.rate <- rt
-		}
-	}()
-
 	er := rate{}
 	cl := &limit{}
 
@@ -153,9 +143,9 @@ func (r *Reader) run() {
 
 			return
 		case l := <-cl.lim:
-			pool <- l
+			r.send(l)
 		case <-currTicker.C:
-			pool <- cl.rate.n
+			r.send(cl.rate.n)
 		case l := <-r.newLimit:
 			go notify(cl.done, false)
 			currTicker.Stop()
@@ -180,16 +170,4 @@ func (r *Reader) run() {
 			}
 		}
 	}
-}
-
-func notify(n chan<- bool, v bool) {
-	if n == nil {
-		return
-	}
-
-	select {
-	case n <- v:
-	default: //Don't wait for somebody to listen on the channel
-	}
-	close(n)
 }

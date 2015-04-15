@@ -3,6 +3,7 @@ package limio
 import (
 	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -98,6 +99,21 @@ func TestManager(t *testing.T) {
 
 	done := lmr.Limit(KB, time.Second)
 	lmr.Manage(l3)
+
+	w := &sync.WaitGroup{}
+	w.Add(1)
+
+	go func() {
+		if n != len(testText)-10 {
+			t.Errorf("Wrong number of bytes read: %d", n)
+		}
+
+		if cls, ok := <-done; !cls || ok {
+			t.Errorf("Did not close \"done\" and pass true. Done: %t, Ok: %t", cls, ok)
+		}
+		w.Done()
+	}()
+
 	err = lmr.Close()
 
 	if err != nil {
@@ -105,12 +121,5 @@ func TestManager(t *testing.T) {
 	}
 
 	n, err = l3.Read(p)
-
-	if n != len(testText)-10 {
-		t.Errorf("Wrong number of bytes read: %d", n)
-	}
-
-	if d, c := <-done; !(d && c) {
-		t.Errorf("Did not close \"done\" and pass true, %t %t", d, c)
-	}
+	w.Wait()
 }

@@ -7,8 +7,8 @@ func TestNotify(t *testing.T) {
 
 	notify(ch, true)
 
-	if _, ok := <-ch; ok {
-		t.Errorf("Did not close channel")
+	if s, ok := <-ch; ok {
+		t.Errorf("Did not close channel: %t, %t", s, ok)
 	}
 
 	ch = make(chan bool, 1)
