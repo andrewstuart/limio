@@ -98,7 +98,9 @@ func (lm *SimpleManager) distribute(n int) {
 				select {
 				case ch <- each:
 				default:
-					//Assume Close() will be called soon
+					//FIXME: does this create a leak?  This will happen if we're unable
+					//to send down the managed limiters' channels. Can we assume Close() will be
+					//called soon?
 				}
 			}
 		}

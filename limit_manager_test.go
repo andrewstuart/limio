@@ -95,4 +95,22 @@ func TestManager(t *testing.T) {
 	if err != io.EOF {
 		t.Errorf("Should have thrown EOF after reached EOF.")
 	}
+
+	done := lmr.Limit(KB, time.Second)
+	lmr.Manage(l3)
+	err = lmr.Close()
+
+	if err != nil {
+		t.Errorf("Error closing lmr: %v", err)
+	}
+
+	n, err = l3.Read(p)
+
+	if n != len(testText)-10 {
+		t.Errorf("Wrong number of bytes read: %d", n)
+	}
+
+	if d, c := <-done; !(d && c) {
+		t.Errorf("Did not close \"done\" and pass true, %t %t", d, c)
+	}
 }
