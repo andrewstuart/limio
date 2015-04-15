@@ -35,44 +35,38 @@ func NewSimpleManager() *SimpleManager {
 
 func (lm *SimpleManager) run() {
 	limited := false
-	currLim := &limit{}
-	currTicker := &time.Ticker{}
+	cl := &limit{}
+	ct := &time.Ticker{}
 
 	er := rate{}
 
 	for {
 		select {
-		case <-currTicker.C:
-			lm.distribute(currLim.rate.n)
-		case tot := <-currLim.lim:
+		case <-ct.C:
+			lm.distribute(cl.rate.n)
+		case tot := <-cl.lim:
 			lm.distribute(tot)
 		case newLim := <-lm.newLimit:
-			go notify(currLim.notify, false)
+			go notify(cl.notify, false)
+			ct.Stop()
 
 			if newLim != nil {
 				limited = true
+				cl = newLim
 
 				for l := range lm.m {
 					lm.limit(l)
 				}
 
-				if newLim.rate == er {
-					currTicker.Stop()
-					currLim.lim = newLim.lim
-				} else {
-					if newLim.rate.n == 0 {
-						currTicker.Stop()
-					} else {
-						currLim.rate.n, currLim.rate.t = Distribute(newLim.rate.n, newLim.rate.t, DefaultWindow)
-						currTicker = time.NewTicker(newLim.rate.t)
-					}
+				if newLim.rate != er && cl.rate.n > 0 {
+					cl.rate.n, cl.rate.t = Distribute(cl.rate.n, cl.rate.t, DefaultWindow)
+					ct = time.NewTicker(cl.rate.t)
 				}
 			} else {
 				limited = false
 				for l := range lm.m {
 					l.Unlimit()
 				}
-				currTicker.Stop()
 			}
 		case l := <-lm.newLimiter:
 			if limited {
@@ -88,19 +82,24 @@ func (lm *SimpleManager) run() {
 			for l := range lm.m {
 				l.Unlimit()
 			}
-			notify(currLim.notify, true)
+			go notify(cl.notify, true)
 			return
 		}
 	}
 }
 
-//NOTE must ONLY be used inside of run() for concurrency safety
+//NOTE must ONLY be used synchonously with the run() goroutine for concurrency
+//safety
 func (lm *SimpleManager) distribute(n int) {
 	if len(lm.m) > 0 {
 		each := n / len(lm.m)
 		for _, ch := range lm.m {
 			if ch != nil {
-				ch <- each
+				select {
+				case ch <- each:
+				default:
+					//Assume Close() will be called soon
+				}
 			}
 		}
 	}

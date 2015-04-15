@@ -16,7 +16,7 @@ type limit struct {
 const DefaultWindow = 10 * time.Millisecond
 
 func (r *Reader) limit() {
-	pool := make(chan int, 10)
+	pool := make(chan int)
 
 	go func() {
 		for {
@@ -28,13 +28,13 @@ func (r *Reader) limit() {
 
 			select {
 			case r.rate <- rt:
-			case <-time.After(2 * DefaultWindow):
+			default:
 			}
 		}
 	}()
 
 	er := rate{}
-	currLim := &limit{}
+	cl := &limit{}
 
 	currTicker := &time.Ticker{}
 
@@ -45,47 +45,38 @@ func (r *Reader) limit() {
 			r.limited = false
 			r.limitedM.Unlock()
 
-			go notify(currLim.notify, true)
+			go notify(cl.notify, true)
 			currTicker.Stop()
 			close(pool)
 			close(r.newLimit)
 			close(r.used)
 
 			return
-		case l := <-currLim.lim:
+		case l := <-cl.lim:
 			pool <- l
 		case <-currTicker.C:
-			pool <- currLim.rate.n
+			pool <- cl.rate.n
 		case l := <-r.newLimit:
-			go notify(currLim.notify, false)
+			go notify(cl.notify, false)
+			currTicker.Stop()
 
 			if l != nil {
 				r.limitedM.Lock()
 				r.limited = true
 				r.limitedM.Unlock()
+				cl = l
 
-				if l.rate != er {
-					if l.rate.n == 0 {
-						currTicker.Stop()
-					} else {
-						l.rate.n, l.rate.t = Distribute(l.rate.n, l.rate.t, DefaultWindow)
-						currTicker = time.NewTicker(l.rate.t)
-					}
-				} else {
-					currTicker.Stop()
+				if cl.rate != er && cl.rate.n != 0 {
+					cl.rate.n, cl.rate.t = Distribute(cl.rate.n, cl.rate.t, DefaultWindow)
+					currTicker = time.NewTicker(cl.rate.t)
 				}
-
-				currLim = l
 			} else {
-				currTicker.Stop()
-				currLim = &limit{}
-
 				r.limitedM.Lock()
 				r.limited = false
 				r.limitedM.Unlock()
 
-				//Potentially need to unblock reader waiting for a value
-				pool <- 1
+				cl = &limit{}
+				r.rate <- 0 //Unlock any readers waiting for a value
 			}
 		}
 	}
@@ -117,7 +108,7 @@ func (r *Reader) Limit(n int, t time.Duration) <-chan bool {
 }
 
 func (r *Reader) LimitChan(lch chan int) <-chan bool {
-	done := make(chan bool, 1)
+	done := make(chan bool)
 	r.newLimit <- &limit{
 		lim:    lch,
 		notify: done,

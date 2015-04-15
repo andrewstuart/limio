@@ -40,8 +40,24 @@ func TestManager(t *testing.T) {
 		t.Errorf("Error reading l2: %v", err)
 	}
 
+	l3 := lmr.NewReader(strings.NewReader(testText))
+	lmr.Manage(l3)
+
+	ch <- 30
+
+	n, err = l3.Read(p)
+	l1.Read(p)
+	l2.Read(p)
+
+	if n != 10 {
+		t.Errorf("Wrong bytes read")
+	}
+
+	lmr.Unmanage(l3)
+
 	lmr.Limit(KB, 10*time.Millisecond)
 
+	//Drain channel
 	n, err = l1.Read(p)
 	m, err := l2.Read(p)
 
@@ -56,7 +72,7 @@ func TestManager(t *testing.T) {
 
 	n, err = l1.Read(p)
 
-	if n != len(testText)-10-m {
+	if n != len(testText)-20-m {
 		t.Errorf("Wrong number read after unlimit: %d", n)
 	}
 
@@ -66,7 +82,7 @@ func TestManager(t *testing.T) {
 
 	n, err = l2.Read(p)
 
-	if n != len(testText)-10-m {
+	if n != len(testText)-20-m {
 		t.Errorf("Wrong number read after unlimit: %d", n)
 	}
 
