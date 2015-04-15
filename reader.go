@@ -120,6 +120,7 @@ const DefaultWindow = 10 * time.Millisecond
 
 func (r *Reader) run() {
 	pool := make(chan int)
+	defer close(pool)
 
 	go func() {
 		for {
@@ -147,7 +148,6 @@ func (r *Reader) run() {
 
 			go notify(cl.done, true)
 			currTicker.Stop()
-			close(pool)
 			close(r.newLimit)
 			close(r.used)
 
@@ -159,6 +159,7 @@ func (r *Reader) run() {
 		case l := <-r.newLimit:
 			go notify(cl.done, false)
 			currTicker.Stop()
+			cl = &limit{}
 
 			if l != nil {
 				cl = l
@@ -175,7 +176,6 @@ func (r *Reader) run() {
 				r.limited = false
 				r.limitedM.Unlock()
 
-				cl = &limit{}
 				r.rate <- 0 //Unlock any readers waiting for a value
 			}
 		}
@@ -189,7 +189,7 @@ func notify(n chan<- bool, v bool) {
 
 	select {
 	case n <- v:
-	case <-time.After(5 * time.Second):
+	default: //Don't wait for somebody to listen on the channel
 	}
 	close(n)
 }

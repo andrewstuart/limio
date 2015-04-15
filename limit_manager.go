@@ -48,6 +48,7 @@ func (lm *SimpleManager) run() {
 			lm.distribute(tot)
 		case newLim := <-lm.newLimit:
 			go notify(cl.done, false)
+			cl = &limit{}
 			ct.Stop()
 
 			if newLim != nil {
