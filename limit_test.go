@@ -36,6 +36,7 @@ func TestUnlimit(t *testing.T) {
 	if n != len(testText)-20 {
 		t.Errorf("Wrong number of bytes read: %d, should be %d", n, len(testText)-20)
 	}
+
 }
 
 func TestClose(t *testing.T) {
@@ -60,4 +61,43 @@ func TestClose(t *testing.T) {
 	if err != nil && err != io.EOF {
 		t.Errorf("Non-EOF error reported for closed limiter: %v", err)
 	}
+}
+
+func TestDualLimit(t *testing.T) {
+	r := NewReader(strings.NewReader(testText))
+
+	ch := make(chan int, 1)
+	ch <- 20
+	done := r.LimitChan(ch)
+
+	p := make([]byte, len(testText))
+
+	n, err := r.Read(p)
+
+	if err != nil {
+		t.Errorf("Got an error reading: %v", err)
+	}
+
+	if n != 20 {
+		t.Errorf("Read wrong number of bytes: %d", n)
+	}
+
+	ch = make(chan int, 1)
+	ch <- 30
+	r.LimitChan(ch)
+
+	if _, cls := <-done; !cls {
+		t.Errorf("did not close done")
+	}
+
+	n, err = r.Read(p)
+
+	if n != 30 {
+		t.Errorf("Wrong number of bytes read")
+	}
+
+	if err != nil {
+		t.Errorf("Error reading bytes")
+	}
+
 }

@@ -5,22 +5,26 @@ import (
 	"time"
 )
 
-type LimitManager struct {
+type Manager interface {
+	Limiter
+	Manage(Limiter)
+	Unmanage(Limiter)
+}
+
+type SimpleManager struct {
 	m map[Limiter]chan int
 
 	newLimit chan *limit
-	unlimit  chan struct{}
 	cls      chan struct{}
 
 	newLimiter chan Limiter
 	clsLimiter chan Limiter
 }
 
-func NewLimitManager() *LimitManager {
-	lm := LimitManager{
+func NewSimpleManager() *SimpleManager {
+	lm := SimpleManager{
 		m:          make(map[Limiter]chan int),
 		newLimit:   make(chan *limit),
-		unlimit:    make(chan struct{}),
 		cls:        make(chan struct{}),
 		newLimiter: make(chan Limiter),
 		clsLimiter: make(chan Limiter),
@@ -29,7 +33,7 @@ func NewLimitManager() *LimitManager {
 	return &lm
 }
 
-func (lm *LimitManager) run() {
+func (lm *SimpleManager) run() {
 	limited := false
 	currLim := &limit{}
 	currTicker := &time.Ticker{}
@@ -43,24 +47,22 @@ func (lm *LimitManager) run() {
 		case tot := <-currLim.lim:
 			lm.distribute(tot)
 		case newLim := <-lm.newLimit:
-
 			go notify(currLim.notify, false)
 
 			if newLim != nil {
 				limited = true
+
 				for l := range lm.m {
 					lm.limit(l)
 				}
 
 				if newLim.rate == er {
 					currTicker.Stop()
+					currLim.lim = newLim.lim
 				} else {
-					n, t := Distribute(newLim.rate.n, newLim.rate.t, DefaultWindow)
-					newLim.rate = rate{n, t}
-					currTicker = time.NewTicker(t)
+					currLim.rate.n, currLim.rate.t = Distribute(newLim.rate.n, newLim.rate.t, DefaultWindow)
+					currTicker = time.NewTicker(newLim.rate.t)
 				}
-
-				currLim = newLim
 			} else {
 				limited = false
 				for l := range lm.m {
@@ -78,10 +80,6 @@ func (lm *LimitManager) run() {
 		case toClose := <-lm.clsLimiter:
 			close(lm.m[toClose])
 			delete(lm.m, toClose)
-		case <-lm.unlimit:
-			for l := range lm.m {
-				l.Unlimit()
-			}
 		case <-lm.cls:
 			for l := range lm.m {
 				l.Unlimit()
@@ -93,7 +91,7 @@ func (lm *LimitManager) run() {
 }
 
 //NOTE must ONLY be used inside of run() for concurrency safety
-func (lm *LimitManager) distribute(n int) {
+func (lm *SimpleManager) distribute(n int) {
 	if len(lm.m) > 0 {
 		each := n / len(lm.m)
 		for _, ch := range lm.m {
@@ -105,24 +103,23 @@ func (lm *LimitManager) distribute(n int) {
 }
 
 //NOTE must ONLY be used inside of run() for concurrency safety
-func (lm *LimitManager) limit(l Limiter) {
+func (lm *SimpleManager) limit(l Limiter) {
 	lm.m[l] = make(chan int)
 	done := l.LimitChan(lm.m[l])
-
 	go func() {
 		if <-done {
-			lm.clsLimiter <- l
+			lm.Unmanage(l)
 		}
 	}()
 }
 
-func (lm *LimitManager) NewReader(r io.Reader) *Reader {
+func (lm *SimpleManager) NewReader(r io.Reader) *Reader {
 	lr := NewReader(r)
 	lm.Manage(lr)
 	return lr
 }
 
-func (lm *LimitManager) Limit(n int, t time.Duration) <-chan bool {
+func (lm *SimpleManager) Limit(n int, t time.Duration) <-chan bool {
 	done := make(chan bool)
 	lm.newLimit <- &limit{
 		rate:   rate{n, t},
@@ -131,7 +128,7 @@ func (lm *LimitManager) Limit(n int, t time.Duration) <-chan bool {
 	return done
 }
 
-func (lm *LimitManager) LimitChan(l chan int) <-chan bool {
+func (lm *SimpleManager) LimitChan(l chan int) <-chan bool {
 	done := make(chan bool)
 	lm.newLimit <- &limit{
 		lim:    l,
@@ -140,15 +137,19 @@ func (lm *LimitManager) LimitChan(l chan int) <-chan bool {
 	return done
 }
 
-func (lm *LimitManager) Unlimit() {
-	lm.unlimit <- struct{}{}
+func (lm *SimpleManager) Unlimit() {
+	lm.newLimit <- nil
 }
 
-func (lm *LimitManager) Close() error {
+func (lm *SimpleManager) Close() error {
 	lm.cls <- struct{}{}
 	return nil
 }
 
-func (lm *LimitManager) Manage(l Limiter) {
+func (lm *SimpleManager) Unmanage(l Limiter) {
+	lm.clsLimiter <- l
+}
+
+func (lm *SimpleManager) Manage(l Limiter) {
 	lm.newLimiter <- l
 }
