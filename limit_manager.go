@@ -93,19 +93,22 @@ func (lm *SimpleManager) run() {
 //safety
 //distribute takes a number and iterates over each channel in the map of managed
 //Limiters, sending an evenly-distriuted limit to each "sublimiter".
-func (lm *SimpleManager) distribute(n int) {
+//distribute takes a number to distribute and returns the number of bytes remaining
+func (lm *SimpleManager) distribute(n int) int {
 	if len(lm.m) > 0 {
 		each := n / len(lm.m)
 		for _, ch := range lm.m {
 			if ch != nil {
 				select {
 				case ch <- each:
+					n -= each
 				default:
-					//"Token bucket" full.
+					//Skip if not ready
 				}
 			}
 		}
 	}
+	return n
 }
 
 //NOTE must ONLY be used inside of run() for concurrency safety

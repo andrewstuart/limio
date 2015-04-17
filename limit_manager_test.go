@@ -6,9 +6,13 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"net/http"
+	_ "net/http/pprof"
 )
 
 func TestManager(t *testing.T) {
+	go http.ListenAndServe(":6060", nil)
 
 	lmr := NewSimpleManager()
 	ch := make(chan int, 1)
@@ -47,13 +51,13 @@ func TestManager(t *testing.T) {
 	ch <- 30
 
 	n, err = l3.Read(p)
-	l1.Read(p)
-	l2.Read(p)
 
 	if n != 10 {
 		t.Errorf("Wrong bytes read")
 	}
 
+	l1.Read(p)
+	l2.Read(p)
 	lmr.Unmanage(l3)
 
 	lmr.Limit(KB, 10*time.Millisecond)
@@ -104,12 +108,8 @@ func TestManager(t *testing.T) {
 	w.Add(1)
 
 	go func() {
-		if n != len(testText)-10 {
-			t.Errorf("Wrong number of bytes read: %d", n)
-		}
-
-		if cls, ok := <-done; !cls || ok {
-			t.Errorf("Did not close \"done\" and pass true. Done: %t, Ok: %t", cls, ok)
+		if cls := <-done; !cls {
+			t.Errorf("Did not close \"done\" and pass true. Done: %t, Ok: %t", cls)
 		}
 		w.Done()
 	}()
@@ -121,5 +121,9 @@ func TestManager(t *testing.T) {
 	}
 
 	n, err = l3.Read(p)
+
+	if n != len(testText)-10 {
+		t.Errorf("Wrong number of bytes read: %d, should be %d", n, len(testText)-10)
+	}
 	w.Wait()
 }

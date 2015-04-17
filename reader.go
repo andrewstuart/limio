@@ -136,10 +136,12 @@ func (r *Reader) run() {
 			r.limited = false
 			r.limitedM.Unlock()
 
-			go notify(cl.done, true)
 			currTicker.Stop()
+			go notify(cl.done, true)
+
 			close(r.newLimit)
 			close(r.used)
+			close(r.rate)
 
 			return
 		case l := <-cl.lim:
