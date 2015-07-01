@@ -67,3 +67,4 @@ func BasicLimiter(b ByteCount, t time.Duration) Limiter
 ```
 BasicLimiter will divvy up the bytes into 100 smaller parts to spread the load
 across time
+=======
