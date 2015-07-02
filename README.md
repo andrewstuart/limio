@@ -31,6 +31,12 @@ SimpleLimit distributes the given quantity evenly into buckets of size t. This
 is useful for avoiding tcp silly window syndrome and providing predictable
 resource usage.
 
+```go
+var ErrTimeoutExceeded error = errors.New("Timeout Exceeded")
+```
+ErrTimeoutExceeded will be returned upon a timeout lapsing without a read
+occuring
+
 #### func  Distribute
 
 ```go
@@ -57,7 +63,7 @@ operation with respect to time.
 ```go
 type Manager interface {
 	Limiter
-	Manage(Limiter)
+	Manage(Limiter) error
 	Unmanage(Limiter)
 }
 ```
@@ -110,6 +116,15 @@ func (r *Reader) Read(p []byte) (written int, err error)
 Read implements io.Reader in a blocking manner according to the limits of the
 limio.Reader.
 
+#### func (*Reader) SetTimeout
+
+```go
+func (r *Reader) SetTimeout(t time.Duration) error
+```
+SetTimeout takes some time.Duration t and configures the underlying Reader to
+return a limio.TimedOut error if the timeout is exceeded while waiting for a
+read operation.
+
 #### func (*Reader) SimpleLimit
 
 ```go
@@ -160,10 +175,10 @@ Limit implements the limio.Limiter interface.
 #### func (*SimpleManager) Manage
 
 ```go
-func (lm *SimpleManager) Manage(l Limiter)
+func (lm *SimpleManager) Manage(l Limiter) error
 ```
 Manage takes a Limiter that will be adopted under the management policy of the
-SimpleManager
+SimpleManager.
 
 #### func (*SimpleManager) NewReader
 
