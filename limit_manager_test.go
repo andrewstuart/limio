@@ -11,10 +11,15 @@ import (
 	_ "net/http/pprof"
 )
 
+func verifyIsManager(m Manager) {}
+
 func TestManager(t *testing.T) {
 	go http.ListenAndServe(":6060", nil)
 
 	lmr := NewSimpleManager()
+
+	verifyIsManager(lmr)
+
 	ch := make(chan int, 1)
 	lmr.Limit(ch)
 
@@ -109,7 +114,7 @@ func TestManager(t *testing.T) {
 
 	go func() {
 		if cls := <-done; !cls {
-			t.Errorf("Did not close \"done\" and pass true. Done: %t, Ok: %t", cls)
+			t.Errorf("Did not close \"done\" and pass true. Done: %t", cls)
 		}
 		w.Done()
 	}()

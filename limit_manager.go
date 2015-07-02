@@ -1,6 +1,7 @@
 package limio
 
 import (
+	"errors"
 	"io"
 	"time"
 )
@@ -11,7 +12,7 @@ import (
 //manage their own distribution of the bandwidth they are allocated.
 type Manager interface {
 	Limiter
-	Manage(Limiter)
+	Manage(Limiter) error
 	Unmanage(Limiter)
 }
 
@@ -187,7 +188,12 @@ func (lm *SimpleManager) Unmanage(l Limiter) {
 }
 
 //Manage takes a Limiter that will be adopted under the management policy of
-//the SimpleManager
-func (lm *SimpleManager) Manage(l Limiter) {
+//the SimpleManager.
+func (lm *SimpleManager) Manage(l Limiter) error {
+	if l == lm {
+		return errors.New("A manager cannot manage itself.")
+	}
+
 	lm.newLimiter <- l
+	return nil
 }

@@ -1,6 +1,7 @@
 package limio
 
 import (
+	"errors"
 	"io"
 	"sync"
 	"time"
@@ -15,6 +16,9 @@ type Reader struct {
 
 	limitedM *sync.RWMutex
 	limited  bool
+
+	timeoutM *sync.Mutex
+	timeout  time.Duration
 
 	rate     chan int
 	used     chan int
@@ -38,6 +42,7 @@ func NewReader(r io.Reader) *Reader {
 	lr := Reader{
 		r:        r,
 		limitedM: &sync.RWMutex{},
+		timeoutM: &sync.Mutex{},
 		newLimit: make(chan *limit),
 		rate:     make(chan int, 10),
 		used:     make(chan int),
@@ -82,6 +87,9 @@ func (r *Reader) Close() error {
 	return nil
 }
 
+//ErrTimeoutExceeded will be returned upon a timeout lapsing without a read occuring
+var ErrTimeoutExceeded error = errors.New("Timeout Exceeded")
+
 //Read implements io.Reader in a blocking manner according to the limits of the
 //limio.Reader.
 func (r *Reader) Read(p []byte) (written int, err error) {
@@ -95,18 +103,39 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 	for written < len(p) && err == nil {
 
 		r.limitedM.RLock()
-		if r.limited {
-			r.limitedM.RUnlock()
-			select {
-			case lim = <-r.rate:
-			default:
-				if written > 0 {
+		isLimited := r.limited
+		r.limitedM.RUnlock()
+
+		if isLimited {
+
+			r.timeoutM.Lock()
+			timeLimit := r.timeout
+			r.timeoutM.Unlock()
+
+			//TODO consolidate two cases if possible. Dynamic select via reflection?
+			if timeLimit > 0 {
+				select {
+				case <-time.After(timeLimit):
+					err = ErrTimeoutExceeded
 					return
+				case lim = <-r.rate:
+				default:
+					if written > 0 {
+						return
+					}
+					lim = <-r.rate
 				}
-				lim = <-r.rate
+			} else {
+				select {
+				case lim = <-r.rate:
+				default:
+					if written > 0 {
+						return
+					}
+					lim = <-r.rate
+				}
 			}
 		} else {
-			r.limitedM.RUnlock()
 			lim = len(p[written:])
 		}
 
@@ -134,11 +163,21 @@ func (r *Reader) send(i int) {
 	}
 }
 
-func (r *Reader) run() {
-	er := rate{}
-	cl := &limit{}
+//SetTimeout takes some time.Duration t and configures the underlying Reader to
+//return a limio.TimedOut error if the timeout is exceeded while waiting for a
+//read operation.
+func (r *Reader) SetTimeout(t time.Duration) error {
+	r.timeoutM.Lock()
+	r.timeout = t
+	r.timeoutM.Unlock()
+	return nil
+}
 
-	currTicker := &time.Ticker{}
+func (r *Reader) run() {
+	emptyRate := rate{}
+	currLim := &limit{}
+
+	rateTicker := &time.Ticker{}
 
 	//This loop is important for serializing access to the limits and the
 	//io.Reader being managed
@@ -149,32 +188,32 @@ func (r *Reader) run() {
 			r.limited = false
 			r.limitedM.Unlock()
 
-			currTicker.Stop()
-			go notify(cl.done, true)
+			rateTicker.Stop()
+			go notify(currLim.done, true)
 
 			close(r.newLimit)
 			close(r.used)
 			close(r.rate)
 
 			return
-		case l := <-cl.lim:
+		case l := <-currLim.lim:
 			r.send(l)
-		case <-currTicker.C:
-			r.send(cl.rate.n)
+		case <-rateTicker.C:
+			r.send(currLim.rate.n)
 		case l := <-r.newLimit:
-			go notify(cl.done, false)
-			currTicker.Stop()
-			cl = &limit{}
+			go notify(currLim.done, false)
+			rateTicker.Stop()
+			currLim = &limit{}
 
 			if l != nil {
-				cl = l
+				currLim = l
 				r.limitedM.Lock()
 				r.limited = true
 				r.limitedM.Unlock()
 
-				if cl.rate != er && cl.rate.n != 0 {
-					cl.rate.n, cl.rate.t = Distribute(cl.rate.n, cl.rate.t, DefaultWindow)
-					currTicker = time.NewTicker(cl.rate.t)
+				if currLim.rate != emptyRate && currLim.rate.n != 0 {
+					currLim.rate.n, currLim.rate.t = Distribute(currLim.rate.n, currLim.rate.t, DefaultWindow)
+					rateTicker = time.NewTicker(currLim.rate.t)
 				}
 			} else {
 				r.limitedM.Lock()
