@@ -5,32 +5,14 @@
     import "git.astuart.co/andrew/limio"
 
 Package limio provides an interface abstraction for rate limiting or flow
-control of arbitrary io.Readers or io.Writers. Several concrete implementations
-of Limiters are also provided.
+control of arbitrary io.Readers or io.Writers. A concrete implementation of a
+handler is also provided for ease of use and reference are also provided.
 
 ## Usage
 
-#### func  NewReader
-
-```go
-func NewReader(r io.Reader, l Limiter) io.Reader
-```
-NewReader takes an io.Reader and a Limiter and returns an io.Reader that will be
-limited via the strategy that Limiter choses to implement.
-
-#### type ByteCount
-
-```go
-type ByteCount uint64
-```
-
-A ByteCount is simply an abstraction over some integer type to provide more
-flexibility should the type need to be changed. Since zettabyte overflows
-uint64, I suppose it may someday need to be changed.
-
 ```go
 const (
-	B ByteCount = 1 << (10 * (iota))
+	B int = 1 << (10 * (iota))
 	KB
 	MB
 	GB
@@ -39,32 +21,139 @@ const (
 	EB
 )
 ```
-Some useful constants with the proper typing
+Some useful byte-sized (heh) constants
+
+```go
+const DefaultWindow = 10 * time.Millisecond
+```
+
+#### func  Distribute
+
+```go
+func Distribute(n int, t, w time.Duration) (int, time.Duration)
+```
+Distribute takes a rate (n, t) and window (w), evenly distributes the n/t to
+n'/t' (n'<=n && t'>=w)
 
 #### type Limiter
 
 ```go
 type Limiter interface {
-	GetLimit() <-chan ByteCount
+	Limit(n int, t time.Duration) <-chan bool //The channel is useful for knowing that the channel has been unlimited
+	LimitChan(chan int) <-chan bool
+	Unlimit()
+	io.Closer
 }
 ```
 
-A Limiter should implement some strategy for providing access to a shared io
-resource. The GetLimit() function must return a channel of ByteCount. When it is
-appropriate for the new limited io.Reader to read some amount of data, that
-amount should be sent through the channel, at which point the io.Reader will
-"burstily" read until it has exhausted the number of bytes it was told to read.
 
-Caution is recommended when implementing a Limiter if this bursty behavior is
-undesireable. If undesireable, make sure that any large ByteCounts are broken up
-into smaller values sent at shorter intervals. See BasicReader for a good
-example of how this can be achieved.
-
-#### func  BasicLimiter
+#### type Manager
 
 ```go
-func BasicLimiter(b ByteCount, t time.Duration) Limiter
+type Manager interface {
+	Limiter
+	Manage(Limiter)
+	Unmanage(Limiter)
+}
 ```
-BasicLimiter will divvy up the bytes into 100 smaller parts to spread the load
-across time
-=======
+
+
+#### type Reader
+
+```go
+type Reader struct {
+}
+```
+
+
+#### func  NewReader
+
+```go
+func NewReader(r io.Reader) *Reader
+```
+
+#### func (*Reader) Close
+
+```go
+func (r *Reader) Close() error
+```
+
+#### func (*Reader) Limit
+
+```go
+func (r *Reader) Limit(n int, t time.Duration) <-chan bool
+```
+
+#### func (*Reader) LimitChan
+
+```go
+func (r *Reader) LimitChan(lch chan int) <-chan bool
+```
+
+#### func (*Reader) Read
+
+```go
+func (r *Reader) Read(p []byte) (written int, err error)
+```
+
+#### func (*Reader) Unlimit
+
+```go
+func (r *Reader) Unlimit()
+```
+
+#### type SimpleManager
+
+```go
+type SimpleManager struct {
+}
+```
+
+
+#### func  NewSimpleManager
+
+```go
+func NewSimpleManager() *SimpleManager
+```
+
+#### func (*SimpleManager) Close
+
+```go
+func (lm *SimpleManager) Close() error
+```
+
+#### func (*SimpleManager) Limit
+
+```go
+func (lm *SimpleManager) Limit(n int, t time.Duration) <-chan bool
+```
+
+#### func (*SimpleManager) LimitChan
+
+```go
+func (lm *SimpleManager) LimitChan(l chan int) <-chan bool
+```
+
+#### func (*SimpleManager) Manage
+
+```go
+func (lm *SimpleManager) Manage(l Limiter)
+```
+
+#### func (*SimpleManager) NewReader
+
+```go
+func (lm *SimpleManager) NewReader(r io.Reader) *Reader
+```
+
+#### func (*SimpleManager) Unlimit
+
+```go
+func (lm *SimpleManager) Unlimit()
+```
+
+#### func (*SimpleManager) Unmanage
+
+```go
+func (lm *SimpleManager) Unmanage(l Limiter)
+```

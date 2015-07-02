@@ -47,7 +47,7 @@ func (r *Reader) Unlimit() {
 	r.newLimit <- nil
 }
 
-func (r *Reader) Limit(n int, t time.Duration) <-chan bool {
+func (r *Reader) SimpleLimit(n int, t time.Duration) <-chan bool {
 	done := make(chan bool, 1)
 	r.newLimit <- &limit{
 		rate: rate{n, t},
@@ -56,7 +56,7 @@ func (r *Reader) Limit(n int, t time.Duration) <-chan bool {
 	return done
 }
 
-func (r *Reader) LimitChan(lch chan int) <-chan bool {
+func (r *Reader) Limit(lch chan int) <-chan bool {
 	done := make(chan bool, 1)
 	r.newLimit <- &limit{
 		lim:  lch,

@@ -16,7 +16,7 @@ func TestManager(t *testing.T) {
 
 	lmr := NewSimpleManager()
 	ch := make(chan int, 1)
-	lmr.LimitChan(ch)
+	lmr.Limit(ch)
 
 	l1 := lmr.NewReader(strings.NewReader(testText))
 	l2 := lmr.NewReader(strings.NewReader(testText))
@@ -60,7 +60,7 @@ func TestManager(t *testing.T) {
 	l2.Read(p)
 	lmr.Unmanage(l3)
 
-	lmr.Limit(KB, 10*time.Millisecond)
+	lmr.SimpleLimit(KB, 10*time.Millisecond)
 
 	//Drain channel
 	n, err = l1.Read(p)
@@ -101,7 +101,7 @@ func TestManager(t *testing.T) {
 		t.Errorf("Should have thrown EOF after reached EOF.")
 	}
 
-	done := lmr.Limit(KB, time.Second)
+	done := lmr.SimpleLimit(KB, time.Second)
 	lmr.Manage(l3)
 
 	w := &sync.WaitGroup{}

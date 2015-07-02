@@ -90,10 +90,11 @@ func (lm *SimpleManager) run() {
 }
 
 //NOTE must ONLY be used synchonously with the run() goroutine for concurrency
-//safety
-//distribute takes a number and iterates over each channel in the map of managed
-//Limiters, sending an evenly-distriuted limit to each "sublimiter".
-//distribute takes a number to distribute and returns the number of bytes remaining
+//safety.
+//func distribute(int) takes a number and iterates over each channel in the map of
+//managed Limiters, sending an evenly-distriuted limit to each "sublimiter".
+//distribute takes a number to distribute and returns the number of bytes
+//remaining
 func (lm *SimpleManager) distribute(n int) int {
 	if len(lm.m) > 0 {
 		each := n / len(lm.m)
@@ -116,7 +117,7 @@ func (lm *SimpleManager) distribute(n int) int {
 //newly returned bool channel so that limiters can be removed when closed.
 func (lm *SimpleManager) limit(l Limiter) {
 	lm.m[l] = make(chan int)
-	done := l.LimitChan(lm.m[l])
+	done := l.Limit(lm.m[l])
 	go func() {
 		//If `true` passed on channel, limiter is closed
 		if <-done {
@@ -131,7 +132,7 @@ func (lm *SimpleManager) NewReader(r io.Reader) *Reader {
 	return lr
 }
 
-func (lm *SimpleManager) Limit(n int, t time.Duration) <-chan bool {
+func (lm *SimpleManager) SimpleLimit(n int, t time.Duration) <-chan bool {
 	done := make(chan bool, 1)
 	lm.newLimit <- &limit{
 		rate: rate{n, t},
@@ -140,7 +141,7 @@ func (lm *SimpleManager) Limit(n int, t time.Duration) <-chan bool {
 	return done
 }
 
-func (lm *SimpleManager) LimitChan(l chan int) <-chan bool {
+func (lm *SimpleManager) Limit(l chan int) <-chan bool {
 	done := make(chan bool, 1)
 	lm.newLimit <- &limit{
 		lim:  l,

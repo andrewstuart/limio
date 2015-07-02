@@ -43,7 +43,7 @@ func TestLimitedReader(t *testing.T) {
 	c := make(chan int)
 
 	lr := NewReader(r)
-	lr.LimitChan(c)
+	lr.Limit(c)
 
 	nBytes := 20
 	c <- nBytes
@@ -106,7 +106,7 @@ func TestEOF(t *testing.T) {
 	c := make(chan int)
 
 	lr := NewReader(r)
-	lr.LimitChan(c)
+	lr.Limit(c)
 
 	go func() {
 		c <- KB
@@ -175,7 +175,7 @@ func TestNoLimit(t *testing.T) {
 
 func TestBasicLimit(t *testing.T) {
 	r := NewReader(strings.NewReader(testText))
-	r.Limit(80, 100*time.Millisecond)
+	r.SimpleLimit(80, 100*time.Millisecond)
 
 	p := make([]byte, len(testText))
 	n, err := r.Read(p)
@@ -206,7 +206,7 @@ func TestUnlimit(t *testing.T) {
 
 	ch := make(chan int, 1)
 	ch <- 20
-	r.LimitChan(ch)
+	r.Limit(ch)
 
 	p := make([]byte, len(testText))
 
@@ -238,7 +238,7 @@ func TestClose(t *testing.T) {
 	r := NewReader(strings.NewReader(testText))
 
 	ch := make(chan int, 1)
-	r.LimitChan(ch)
+	r.Limit(ch)
 	err := r.Close()
 
 	if err != nil {
@@ -263,7 +263,7 @@ func TestDualLimit(t *testing.T) {
 
 	ch := make(chan int, 1)
 	ch <- 20
-	done := r.LimitChan(ch)
+	done := r.Limit(ch)
 
 	p := make([]byte, len(testText))
 
@@ -279,7 +279,7 @@ func TestDualLimit(t *testing.T) {
 
 	ch = make(chan int, 1)
 	ch <- 30
-	r.LimitChan(ch)
+	r.Limit(ch)
 
 	if _, cls := <-done; !cls {
 		t.Errorf("did not close done")
