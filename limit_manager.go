@@ -5,12 +5,18 @@ import (
 	"time"
 )
 
+//A Manager enables consumers to treat a group of Limiters as a single Limiter,
+//enabling hierarchies of limiters. For example, a network interface could have
+//a global limit that is distributed across connections, each of which can
+//manage their own distribution of the bandwidth they are allocated.
 type Manager interface {
 	Limiter
 	Manage(Limiter)
 	Unmanage(Limiter)
 }
 
+//A SimpleManager is an implementation of the limio.Manager interface. It
+//allows simple rate-based and arbitrary channel-based limits to be set.
 type SimpleManager struct {
 	m map[Limiter]chan int
 
@@ -21,6 +27,7 @@ type SimpleManager struct {
 	clsLimiter chan Limiter
 }
 
+//NewSimpleManager creates and initializes a SimpleManager.
 func NewSimpleManager() *SimpleManager {
 	lm := SimpleManager{
 		m:          make(map[Limiter]chan int),
@@ -32,6 +39,12 @@ func NewSimpleManager() *SimpleManager {
 	go lm.run()
 	return &lm
 }
+
+//DefaultWindow is the window used to smooth SimpleLimit rates. That is,
+//SimpleLimit distributes the given quantity evenly into buckets of size t.
+//This is useful for avoiding tcp silly window syndrome and providing
+//predictable resource usage.
+const DefaultWindow = 10 * time.Millisecond
 
 func (lm *SimpleManager) run() {
 	limited := false
@@ -126,12 +139,16 @@ func (lm *SimpleManager) limit(l Limiter) {
 	}()
 }
 
+//NewReader takes an io.Reader and Limits it according to its limit
+//policy/strategy
 func (lm *SimpleManager) NewReader(r io.Reader) *Reader {
 	lr := NewReader(r)
 	lm.Manage(lr)
 	return lr
 }
 
+//SimpleLimit takes an int and time.Duration that will be distributed evenly
+//across all managed Limiters.
 func (lm *SimpleManager) SimpleLimit(n int, t time.Duration) <-chan bool {
 	done := make(chan bool, 1)
 	lm.newLimit <- &limit{
@@ -141,6 +158,7 @@ func (lm *SimpleManager) SimpleLimit(n int, t time.Duration) <-chan bool {
 	return done
 }
 
+//Limit implements the limio.Limiter interface.
 func (lm *SimpleManager) Limit(l chan int) <-chan bool {
 	done := make(chan bool, 1)
 	lm.newLimit <- &limit{
@@ -150,19 +168,26 @@ func (lm *SimpleManager) Limit(l chan int) <-chan bool {
 	return done
 }
 
+//Unlimit implements the limio.Limiter interface.
 func (lm *SimpleManager) Unlimit() {
 	lm.newLimit <- nil
 }
 
+//Close allows the SimpleManager to free any resources it is using if the
+//consumer has no further need for the SimpleManager.
 func (lm *SimpleManager) Close() error {
 	lm.cls <- struct{}{}
 	return nil
 }
 
+//Unmanage allows consumers to remove a specific Limiter from its management
+//strategy
 func (lm *SimpleManager) Unmanage(l Limiter) {
 	lm.clsLimiter <- l
 }
 
+//Manage takes a Limiter that will be adopted under the management policy of
+//the SimpleManager
 func (lm *SimpleManager) Manage(l Limiter) {
 	lm.newLimiter <- l
 }

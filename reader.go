@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+//Reader implements an io-limited reader that conforms to the io.Reader and
+//limio.Limiter interface, and can have its limits updated concurrently with
+//any Read() calls.
 type Reader struct {
 	r   io.Reader
 	eof bool
@@ -30,6 +33,7 @@ type rate struct {
 	t time.Duration
 }
 
+//NewReader takes any io.Reader and returns a limio.Reader.
 func NewReader(r io.Reader) *Reader {
 	lr := Reader{
 		r:        r,
@@ -43,10 +47,13 @@ func NewReader(r io.Reader) *Reader {
 	return &lr
 }
 
+//Unlimit removes any restrictions on the underlying io.Reader.
 func (r *Reader) Unlimit() {
 	r.newLimit <- nil
 }
 
+//SimpleLimit takes an integer and a time.Duration and limits the underlying
+//reader non-burstily (given rate is averaged over a small time).
 func (r *Reader) SimpleLimit(n int, t time.Duration) <-chan bool {
 	done := make(chan bool, 1)
 	r.newLimit <- &limit{
@@ -56,6 +63,8 @@ func (r *Reader) SimpleLimit(n int, t time.Duration) <-chan bool {
 	return done
 }
 
+//Limit can be used to precisely control the limit at which bytes can be Read,
+//whether burstily or not.
 func (r *Reader) Limit(lch chan int) <-chan bool {
 	done := make(chan bool, 1)
 	r.newLimit <- &limit{
@@ -65,11 +74,16 @@ func (r *Reader) Limit(lch chan int) <-chan bool {
 	return done
 }
 
+//Close allows the goroutines that were managing limits and reads to shut down
+//and free up memory. It should be called by any clients of the limio.Reader,
+//much as http.Response.Body should be closed to free up system resources.
 func (r *Reader) Close() error {
 	r.cls <- true
 	return nil
 }
 
+//Read implements io.Reader in a blocking manner according to the limits of the
+//limio.Reader.
 func (r *Reader) Read(p []byte) (written int, err error) {
 	if r.eof {
 		err = io.EOF
@@ -88,9 +102,8 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 			default:
 				if written > 0 {
 					return
-				} else {
-					lim = <-r.rate
 				}
+				lim = <-r.rate
 			}
 		} else {
 			r.limitedM.RUnlock()
@@ -114,8 +127,6 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 	return
 }
 
-const DefaultWindow = 10 * time.Millisecond
-
 func (r *Reader) send(i int) {
 	select {
 	case r.rate <- i:
@@ -129,6 +140,8 @@ func (r *Reader) run() {
 
 	currTicker := &time.Ticker{}
 
+	//This loop is important for serializing access to the limits and the
+	//io.Reader being managed
 	for {
 		select {
 		case <-r.cls:
