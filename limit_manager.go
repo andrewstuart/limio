@@ -18,6 +18,9 @@ type Manager interface {
 
 //A SimpleManager is an implementation of the limio.Manager interface. It
 //allows simple rate-based and arbitrary channel-based limits to be set.
+//
+//A SimpleManager is designed so that Limit and Manage may be called
+//concurrently.
 type SimpleManager struct {
 	m map[Limiter]chan int
 

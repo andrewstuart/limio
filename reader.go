@@ -8,7 +8,7 @@ import (
 )
 
 //Reader implements an io-limited reader that conforms to the io.Reader and
-//limio.Limiter interface, and can have its limits updated concurrently with
+//limio.Limiter interface. Reader can have its limits updated concurrently with
 //any Read() calls.
 type Reader struct {
 	r   io.Reader
