@@ -114,14 +114,24 @@ func (lm *SimpleManager) run() {
 //remaining
 func (lm *SimpleManager) distribute(n int) int {
 	if len(lm.m) > 0 {
+
 		each := n / len(lm.m)
-		for _, ch := range lm.m {
-			if ch != nil {
-				select {
-				case ch <- each:
-					n -= each
-				default:
-					//Skip if not ready
+
+		cp := map[Limiter]chan int{}
+		for k, v := range lm.m {
+			cp[k] = v
+		}
+
+		for n >= each && len(cp) > 0 {
+			for k, ch := range cp {
+				if ch != nil {
+					select {
+					case ch <- each:
+						n -= each
+						delete(cp, k)
+					default:
+						//Skip if not ready; come back
+					}
 				}
 			}
 		}
