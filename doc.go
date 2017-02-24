@@ -12,4 +12,4 @@
 //implement the Limiter interface, allowing consumers to treat its encapsulated
 //group of Limiters as a single Limiter, knowing the strategy will be applied
 //within the given limits.
-package limio
+package limio // import astuart.co/limio
