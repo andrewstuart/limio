@@ -2,7 +2,6 @@ package limio
 
 import (
 	"io"
-	"log"
 	"strings"
 	"sync"
 	"testing"
@@ -31,12 +30,20 @@ func TestManager(t *testing.T) {
 
 	ch <- 20
 
+	t.Log("Reading 1")
+
 	n, err := l1.Read(p)
+
+	t.Logf("Read 1: %d", n)
 
 	asrt.NoError(err)
 	asrt.Equal(10, n)
 
+	t.Log("Reading 2")
+
 	n, err = l2.Read(p)
+
+	t.Logf("Read 2: %d", n)
 
 	asrt.NoError(err)
 	asrt.Equal(10, n)
@@ -46,25 +53,31 @@ func TestManager(t *testing.T) {
 
 	ch <- 30
 
+	t.Log("Reading 3")
+
 	n, err = l3.Read(p)
 	assert.NoError(t, err)
 	asrt.Equal(n, 10)
 
-	l1.Read(p)
-	l2.Read(p)
+	t.Logf("Read 3: %d", n)
+
+	_, err = l1.Read(p)
+	asrt.NoError(err)
+	_, err = l2.Read(p)
+	asrt.NoError(err)
 	lmr.Unmanage(l3)
 
-	log.Println("unmanage done")
+	t.Log("unmanage done")
 
 	lmr.SimpleLimit(KB, 10*time.Millisecond)
 
 	//Drain channel
 	n, err = l1.Read(p)
+	asrt.NoError(err)
 	m, err := l2.Read(p)
 
-	if n+m != 1024 {
-		t.Errorf("Wrong number of bytes read: %d, should be 1024", n+m)
-	}
+	asrt.NoError(err)
+	asrt.Equal(1024, n+m, "Wrong number of total bytes read")
 	if err != nil {
 		t.Errorf("Error reading: %v", err)
 	}
