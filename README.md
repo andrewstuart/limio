@@ -1,12 +1,24 @@
 [![GoDoc](https://godoc.org/github.com/andrewstuart/limio?status.svg)](https://godoc.org/github.com/andrewstuart/limio)
+[![Build Status](https://travis-ci.org/andrewstuart/limio.svg?branch=master)](https://travis-ci.org/andrewstuart/limio)
 
 # limio
 --
-    import "git.astuart.co/andrew/limio"
+    import "astuart.co/limio"
 
-Package limio provides an interface abstraction for rate limiting or flow
-control of arbitrary io.Readers or io.Writers. A concrete implementation of a
-handler is also provided for ease of use and reference are also provided.
+Package limio provides an interface for rate limiting as well as a rate-limited
+Reader implementation.
+
+In limio, there are two important interfaces for rate limiting. The first,
+Limiter, is more primitive. Most times, implementers of a Limiter should be
+creating a way to apply time constraints to a discretely quantifiable
+transaction.
+
+The other interface is a Manager, which will likely be implemented in many more
+cases, as it allows consumers to take any number of Limiters and apply a
+strategy to the group. Most importantly, a Manager will also need to implement
+the Limiter interface, allowing consumers to treat its encapsulated group of
+Limiters as a single Limiter, knowing the strategy will be applied within the
+given limits.
 
 ## Usage
 
@@ -64,8 +76,14 @@ bucket. The actual integer sent through the channel represents a quantity of
 operations that can take place. The implementation should be sure to specify its
 interpretation of the quantity.
 
+Limit() returns a new boolean channel, used to comunicate that the given `chan
+int` is no longer being used and may be closed. A false value indicates that the
+Limiter has not been shut down and may still be acted upon. True indicates that
+the limiter has been shutdown and any further function calls will have no
+effect.
+
 Unlimit() removes any formerly imposed limits and allows the underlying
-operation
+operation.
 
 #### type Manager
 
@@ -90,8 +108,8 @@ type Reader struct {
 ```
 
 Reader implements an io-limited reader that conforms to the io.Reader and
-limio.Limiter interface, and can have its limits updated concurrently with any
-Read() calls.
+limio.Limiter interface. Reader can have its limits updated concurrently with
+any Read() calls.
 
 #### func  NewReader
 
@@ -158,6 +176,8 @@ type SimpleManager struct {
 
 A SimpleManager is an implementation of the limio.Manager interface. It allows
 simple rate-based and arbitrary channel-based limits to be set.
+
+A SimpleManager is designed so that Limit and Manage may be called concurrently.
 
 #### func  NewSimpleManager
 
