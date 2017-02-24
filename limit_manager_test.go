@@ -2,23 +2,24 @@ package limio
 
 import (
 	"io"
+	"log"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"net/http"
+	"github.com/stretchr/testify/assert"
+
 	_ "net/http/pprof"
 )
 
 func verifyIsManager(m Manager) {}
 
 func TestManager(t *testing.T) {
-	go http.ListenAndServe(":6060", nil)
-
+	asrt := assert.New(t)
 	lmr := NewSimpleManager()
 
-	verifyIsManager(lmr)
+	asrt.Implements((*Manager)(nil), lmr)
 
 	ch := make(chan int, 1)
 	lmr.Limit(ch)
@@ -32,38 +33,28 @@ func TestManager(t *testing.T) {
 
 	n, err := l1.Read(p)
 
-	if n != 10 {
-		t.Errorf("Wrong number of bytes read by n1: %d, expected 10", n)
-	}
-
-	if err != nil {
-		t.Errorf("Error reading l1: %v", err)
-	}
+	asrt.NoError(err)
+	asrt.Equal(10, n)
 
 	n, err = l2.Read(p)
 
-	if n != 10 {
-		t.Errorf("Wrong number of bytes read by n2: %d, expected 10", n)
-	}
-
-	if err != nil {
-		t.Errorf("Error reading l2: %v", err)
-	}
+	asrt.NoError(err)
+	asrt.Equal(10, n)
 
 	l3 := lmr.NewReader(strings.NewReader(testText))
-	lmr.Manage(l3)
+	asrt.NoError(lmr.Manage(l3))
 
 	ch <- 30
 
 	n, err = l3.Read(p)
-
-	if n != 10 {
-		t.Errorf("Wrong bytes read")
-	}
+	assert.NoError(t, err)
+	asrt.Equal(n, 10)
 
 	l1.Read(p)
 	l2.Read(p)
 	lmr.Unmanage(l3)
+
+	log.Println("unmanage done")
 
 	lmr.SimpleLimit(KB, 10*time.Millisecond)
 
