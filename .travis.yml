@@ -1,6 +1,7 @@
 language: go
-language: go
 go_import_path: astuart.co/limio
+
+script: go test -v -timeout 10s
 
 matrix:
   allow_failures:
