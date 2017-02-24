@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type tStr struct {
@@ -202,23 +204,18 @@ func TestBasicLimit(t *testing.T) {
 }
 
 func TestUnlimit(t *testing.T) {
+	asrt := assert.New(t)
 	r := NewReader(strings.NewReader(testText))
 
 	ch := make(chan int, 1)
-	ch <- 20
 	r.Limit(ch)
+	ch <- 20
 
 	p := make([]byte, len(testText))
 
 	n, err := r.Read(p)
-
-	if err != nil {
-		t.Errorf("Got an error reading: %v", err)
-	}
-
-	if n != 20 {
-		t.Errorf("Read wrong number of bytes: %d", n)
-	}
+	asrt.NoError(err)
+	asrt.Equal(20, n)
 
 	r.Unlimit()
 
@@ -228,9 +225,7 @@ func TestUnlimit(t *testing.T) {
 		t.Errorf("Error reading: %v", err)
 	}
 
-	if n != len(testText)-20 {
-		t.Errorf("Wrong number of bytes read: %d, should be %d", n, len(testText)-20)
-	}
+	asrt.Equal(len(testText)-20, n)
 
 }
 
