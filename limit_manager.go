@@ -86,6 +86,7 @@ func (lm *SimpleManager) run() {
 					cl.rate.n, cl.rate.t = Distribute(cl.rate.n, cl.rate.t, DefaultWindow)
 					ct = time.NewTicker(cl.rate.t)
 				}
+				close(newLim.ready)
 				continue
 			}
 
@@ -179,10 +180,13 @@ func (lm *SimpleManager) NewReader(r io.Reader) *Reader {
 //across all managed Limiters.
 func (lm *SimpleManager) SimpleLimit(n int, t time.Duration) <-chan bool {
 	done := make(chan bool, 1)
+	ready := make(chan struct{})
 	lm.newLimit <- &limit{
-		rate: rate{n, t},
-		done: done,
+		rate:  rate{n, t},
+		done:  done,
+		ready: ready,
 	}
+	<-ready
 	return done
 }
 
