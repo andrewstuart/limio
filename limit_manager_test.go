@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/stretchr/testify/assert"
 
 	_ "net/http/pprof"
@@ -26,24 +27,24 @@ func TestManager(t *testing.T) {
 	l1 := lmr.NewReader(strings.NewReader(testText))
 	l2 := lmr.NewReader(strings.NewReader(testText))
 
-	p := make([]byte, len(testText))
+	p := make([]byte, len(testText)+1)
 
 	ch <- 20
 
-	t.Log("Reading 1")
+	glog.Info("Reading 1")
 
 	n, err := l1.Read(p)
 
-	t.Logf("Read 1: %d", n)
+	glog.Infof("Read 1: %d", n)
 
 	asrt.NoError(err)
 	asrt.Equal(10, n)
 
-	t.Log("Reading 2")
+	glog.Info("Reading 2")
 
 	n, err = l2.Read(p)
 
-	t.Logf("Read 2: %d", n)
+	glog.Infof("Read 2: %d", n)
 
 	asrt.NoError(err)
 	asrt.Equal(10, n)
@@ -53,13 +54,13 @@ func TestManager(t *testing.T) {
 
 	ch <- 30
 
-	t.Log("Reading 3")
+	glog.Info("Reading 3")
 
 	n, err = l3.Read(p)
 	assert.NoError(t, err)
 	asrt.Equal(n, 10)
 
-	t.Logf("Read 3: %d", n)
+	glog.Infof("Read 3: %d", n)
 
 	_, err = l1.Read(p)
 	asrt.NoError(err)
@@ -67,7 +68,7 @@ func TestManager(t *testing.T) {
 	asrt.NoError(err)
 	lmr.Unmanage(l3)
 
-	t.Log("unmanage done")
+	glog.Info("unmanage done")
 
 	lmr.SimpleLimit(KB, 10*time.Millisecond)
 

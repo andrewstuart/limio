@@ -5,6 +5,8 @@ import (
 	"io"
 	"sync"
 	"time"
+
+	"github.com/golang/glog"
 )
 
 //Reader implements an io-limited reader that conforms to the io.Reader and
@@ -27,9 +29,10 @@ type Reader struct {
 }
 
 type limit struct {
-	lim  <-chan int
-	rate rate
-	done chan<- bool
+	lim   <-chan int
+	rate  rate
+	ready chan<- struct{}
+	done  chan<- bool
 }
 
 type rate struct {
@@ -61,10 +64,13 @@ func (r *Reader) Unlimit() {
 //reader non-burstily (given rate is averaged over a small time).
 func (r *Reader) SimpleLimit(n int, t time.Duration) <-chan bool {
 	done := make(chan bool, 1)
+	ready := make(chan struct{})
 	r.newLimit <- &limit{
-		rate: rate{n, t},
-		done: done,
+		rate:  rate{n, t},
+		done:  done,
+		ready: ready,
 	}
+	<-ready
 	return done
 }
 
@@ -72,10 +78,13 @@ func (r *Reader) SimpleLimit(n int, t time.Duration) <-chan bool {
 //whether burstily or not.
 func (r *Reader) Limit(lch chan int) <-chan bool {
 	done := make(chan bool, 1)
+	ready := make(chan struct{})
 	r.newLimit <- &limit{
-		lim:  lch,
-		done: done,
+		lim:   lch,
+		done:  done,
+		ready: ready,
 	}
+	<-ready
 	return done
 }
 
@@ -156,7 +165,7 @@ func (r *Reader) Read(p []byte) (written int, err error) {
 	return
 }
 
-func (r *Reader) send(i int) {
+func (r *Reader) sendIfReady(i int) {
 	select {
 	case r.rate <- i:
 	default:
@@ -197,10 +206,11 @@ func (r *Reader) run() {
 
 			return
 		case l := <-currLim.lim:
-			r.send(l)
+			r.sendIfReady(l)
 		case <-rateTicker.C:
-			r.send(currLim.rate.n)
+			r.sendIfReady(currLim.rate.n)
 		case l := <-r.newLimit:
+			glog.V(9).Infof("Reader got a new limit: %#v", l)
 			go notify(currLim.done, false)
 			rateTicker.Stop()
 			currLim = &limit{}
@@ -215,6 +225,8 @@ func (r *Reader) run() {
 					currLim.rate.n, currLim.rate.t = Distribute(currLim.rate.n, currLim.rate.t, DefaultWindow)
 					rateTicker = time.NewTicker(currLim.rate.t)
 				}
+
+				close(l.ready)
 			} else {
 				r.limitedM.Lock()
 				r.limited = false
