@@ -23,4 +23,7 @@ func slowCopy(w io.Writer, r io.Reader) error {
 
   return io.Copy(w, lr)
 }
-```
+
+func slowGroupCopy(ws []io.Writer, rs []io.Reader) error {
+  // For a simpler example, imagine len(ws) == len(rs) always
+}

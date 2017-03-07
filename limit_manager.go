@@ -193,10 +193,13 @@ func (lm *SimpleManager) SimpleLimit(n int, t time.Duration) <-chan bool {
 //Limit implements the limio.Limiter interface.
 func (lm *SimpleManager) Limit(l chan int) <-chan bool {
 	done := make(chan bool, 1)
+	ready := make(chan struct{})
 	lm.newLimit <- &limit{
-		lim:  l,
-		done: done,
+		lim:   l,
+		done:  done,
+		ready: ready,
 	}
+	<-ready
 	return done
 }
 

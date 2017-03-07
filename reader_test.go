@@ -292,6 +292,21 @@ func TestDualLimit(t *testing.T) {
 
 }
 
+func ExampleReader() {
+	slowCopy := func(w io.Writer, r io.Reader) error {
+		lr := NewReader(r)
+
+		// Limit at 1MB/s
+		lr.SimpleLimit(1*KB, time.Second)
+
+		_, err := io.Copy(w, lr)
+		return err
+	}
+
+	buf := &bytes.Buffer{}
+	slowCopy(buf, strings.NewReader(testText))
+}
+
 const testEOFText = "foobarbaz"
 
 const testText = `Lorem ipsum dolor sit amet, consectetur adipiscing elit.
