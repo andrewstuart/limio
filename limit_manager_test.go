@@ -1,6 +1,7 @@
 package limio
 
 import (
+	"bytes"
 	"io"
 	"strings"
 	"sync"
@@ -136,4 +137,36 @@ func TestManager(t *testing.T) {
 		t.Errorf("Wrong number of bytes read: %d, should be %d", n, len(testText)-10)
 	}
 	w.Wait()
+}
+
+func ExampleSimpleManager() {
+	slowCopy := func(ws []io.Writer, rs []io.Reader) error {
+		// For a simpler example, imagine len(ws) == len(rs) always
+
+		lmr := NewSimpleManager()
+		// Limit all operations to an aggregate 1MB/s
+		lmr.SimpleLimit(1*MB, time.Second)
+
+		wg := &sync.WaitGroup{}
+		wg.Add(len(ws))
+
+		for i := range ws {
+			go func(i int) {
+				lr := NewReader(rs[i])
+				lmr.Manage(lr)
+
+				// Obviously handle the errors in a real implementation
+				io.Copy(ws[i], lr)
+				wg.Done()
+			}(i)
+		}
+
+		wg.Wait()
+		return nil
+	}
+
+	buf := &bytes.Buffer{}
+	rdr := strings.NewReader(testText)
+
+	slowCopy([]io.Writer{buf}, []io.Reader{rdr})
 }
