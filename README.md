@@ -49,3 +49,4 @@ func slowGroupCopy(ws []io.Writer, rs []io.Reader) error {
   wg.Wait()
   return nil
 }
+```
