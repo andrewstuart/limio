@@ -19,7 +19,7 @@ func slowCopy(w io.Writer, r io.Reader) error {
   lr := limio.NewReader(r)
 
   // Limit at 1MB/s
-  lr.SimpleLimit(1*KB, time.Second)
+  lr.SimpleLimit(1*MB, time.Second)
 
   _, err := io.Copy(w, lr)
   return err
